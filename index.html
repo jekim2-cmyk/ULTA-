@@ -63,13 +63,14 @@
   <div class="kpis" id="monthlyKpis" style="display:none;">
     <div class="kpi"><div class="label">Sell-through (POS)</div><div class="value">—</div><div class="sub">-</div></div>
     <div class="kpi"><div class="label">Sell-in (내부 출고)</div><div class="value">—</div><div class="sub">-</div></div>
-    <div class="kpi"><div class="label">마케팅비 (Actual)</div><div class="value">—</div><div class="sub">-</div></div>
+    <div class="kpi"><div class="label">COOP (Actual)</div><div class="value">—</div><div class="sub">-</div></div>
   </div>
+  <div id="orderProjNote" style="display:none; font-size:11px; color:var(--muted); font-style:italic; margin:-8px 0 16px;">-</div>
 
   <div id="monthlyGauges" style="display:none; grid-template-columns:repeat(auto-fit, minmax(220px,1fr)); gap:16px; margin-bottom:20px;">
     <div>
       <div style="display:flex; justify-content:space-between; font-size:12.5px; color:var(--muted); margin-bottom:6px;">
-        <span>Sell-in 목표 달성률</span>
+        <span>COP 달성률</span>
         <span id="siGaugePct" style="font-weight:700;">-</span>
       </div>
       <div style="height:8px; border-radius:99px; background:#eef1f6; overflow:hidden;">
@@ -79,7 +80,7 @@
     </div>
     <div>
       <div style="display:flex; justify-content:space-between; font-size:12.5px; color:var(--muted); margin-bottom:6px;">
-        <span>마케팅 예산 소진율</span>
+        <span>COOP 예산 소진율</span>
         <span id="mkGaugePct" style="font-weight:700;">-</span>
       </div>
       <div style="height:8px; border-radius:99px; background:#eef1f6; overflow:hidden;">
@@ -92,20 +93,60 @@
   <div class="legend" id="monthlyLegend" style="display:none;">
     <span><span class="dot blue"></span>Sell-in</span>
     <span><span class="dot orange"></span>Sell-through</span>
-    <span style="display:flex; align-items:center; gap:6px;"><span style="width:16px; height:0; border-top:2px dashed #9aa2b1; display:inline-block;"></span>Sell-in 목표</span>
+    <span style="display:flex; align-items:center; gap:6px;"><span style="width:16px; height:0; border-top:2px dashed #9aa2b1; display:inline-block;"></span>COP</span>
   </div>
   <div style="position:relative; width:100%; height:260px; margin-bottom:8px;" id="monthlyChartWrap">
-    <canvas id="monthlyChart" role="img" aria-label="월별 Sell-in, Sell-through 실적과 Sell-in 목표선 추이 차트"></canvas>
+    <canvas id="monthlyChart" role="img" aria-label="월별 Sell-in, Sell-through 실적과 COP 선 추이 차트"></canvas>
   </div>
 
   <table id="monthlyTable" style="margin-top:14px;">
-    <thead><tr><th>월</th><th>Sell-through</th><th>Sell-in</th><th>Sell-in 목표</th><th>마케팅비</th></tr></thead>
+    <thead><tr><th>월</th><th>Sell-through</th><th>Sell-in</th><th>COP</th><th>COOP</th><th style="color:var(--muted); font-weight:400;">ULTA 발주예측 (참고)</th></tr></thead>
+    <tbody><tr><td colspan="6" class="empty-hint">불러오는 중...</td></tr></tbody>
+  </table>
+</div>
+
+<div class="section">
+  <h2>매장별 매출 순위 <span style="font-size:11px;color:var(--muted);font-weight:400;">(Store-Sales 원본 파일이 있는 주차만 집계)</span></h2>
+  <div class="desc" id="storeRankDesc">불러오는 중...</div>
+  <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+    <label for="storeMonthPicker" style="font-size:12.5px; color:var(--muted);">조회 월</label>
+    <select id="storeMonthPicker"></select>
+  </div>
+  <table id="storeRankTable">
+    <thead><tr><th>순위</th><th>매장</th><th>매출</th><th>판매수량</th><th>월 매출 비중</th></tr></thead>
     <tbody><tr><td colspan="5" class="empty-hint">불러오는 중...</td></tr></tbody>
   </table>
 </div>
 
 <div class="section">
-  <h2>카테고리별 누적 마케팅비 <span style="font-size:11px;color:var(--muted);font-weight:400;">(전체 기간)</span></h2>
+  <h2>SKU별 판매 비중 & 품절(OOS) 현황</h2>
+  <div class="desc" id="skuDesc">불러오는 중...</div>
+  <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+    <label for="skuMonthPicker" style="font-size:12.5px; color:var(--muted);">조회 월</label>
+    <select id="skuMonthPicker"></select>
+  </div>
+
+  <div class="kpis" id="skuKpis" style="display:none; grid-template-columns:repeat(auto-fit,minmax(160px,1fr));">
+    <div class="kpi"><div class="label">Top 3 SKU 매출 비중</div><div class="value" id="top3PctValue">—</div><div class="sub" id="top3SubValue">-</div></div>
+    <div class="kpi"><div class="label">평균 매장 품절률 (OOS)</div><div class="value" id="oosAvgValue">—</div><div class="sub" id="oosSubValue">-</div></div>
+  </div>
+
+  <p style="font-size:11.5px; font-weight:700; color:var(--navy); margin:16px 0 6px;">SKU별 매출 순위 (Top 10)</p>
+  <table id="skuSalesTable">
+    <thead><tr><th>순위</th><th>SKU</th><th>매출</th><th>매출 비중</th></tr></thead>
+    <tbody><tr><td colspan="4" class="empty-hint">불러오는 중...</td></tr></tbody>
+  </table>
+
+  <p style="font-size:11.5px; font-weight:700; color:var(--navy); margin:18px 0 6px;">품절률(OOS) 높은 SKU</p>
+  <div class="desc" style="margin-bottom:8px;">OOS 추적 대상은 판매 상위 SKU 8~10개로 한정되어 있음 (ULTA 리포트 기준)</div>
+  <table id="oosTable">
+    <thead><tr><th>SKU</th><th>평균 OOS%</th><th>최고 OOS%</th><th>추적 주차 수</th></tr></thead>
+    <tbody><tr><td colspan="4" class="empty-hint">불러오는 중...</td></tr></tbody>
+  </table>
+</div>
+
+<div class="section">
+  <h2>카테고리별 누적 COOP <span style="font-size:11px;color:var(--muted);font-weight:400;">(전체 기간)</span></h2>
   <div id="categoryChart"><div class="empty-hint">불러오는 중...</div></div>
 </div>
 
@@ -140,7 +181,7 @@ function marketingMonthToKey(raw, referenceYear){
   return `${year}-${String(num).padStart(2,'0')}`;
 }
 
-function buildMonthlyRollup(weekly, kpiMonthly, target, marketing){
+function buildMonthlyRollup(weekly, kpiMonthly, target, marketing, orderProjection){
   const map = {};
   function ensure(key){
     if (!map[key]) map[key] = {
@@ -148,7 +189,8 @@ function buildMonthlyRollup(weekly, kpiMonthly, target, marketing){
       sellThroughUsd: 0, hasSellThrough: false,
       sellInActualUsd: null, sellInActualKrw: null,
       sellInTargetKrw: null,
-      mktEstUsd: 0, mktActUsd: 0, hasMkt: false
+      mktEstUsd: 0, mktActUsd: 0, hasMkt: false,
+      orderProjUsd: null
     };
     return map[key];
   }
@@ -171,6 +213,15 @@ function buildMonthlyRollup(weekly, kpiMonthly, target, marketing){
       const v = target.byMonth[key];
       if (!v) return;
       ensure(key).sellInTargetKrw = v;
+    });
+  }
+  // ULTA's own order-projection forecast: reference only, never used for achievement
+  // rate/gauge/chart comparisons (see disclaimer: it's a non-binding system estimate).
+  if (orderProjection && orderProjection.byMonth){
+    Object.keys(orderProjection.byMonth).forEach(key=>{
+      const v = orderProjection.byMonth[key];
+      if (!v) return;
+      ensure(key).orderProjUsd = v;
     });
   }
   const years = [];
@@ -236,7 +287,7 @@ function renderMonthlyChart(rollup, selectedKey){
   const datasets = [
     { type:'bar', label:'Sell-in', data: rollup.map(e=>e.sellInActualUsd), backgroundColor: siColors, borderRadius:4, maxBarThickness:22 },
     { type:'bar', label:'Sell-through', data: rollup.map(e=>e.sellThroughUsd || null), backgroundColor: stColors, borderRadius:4, maxBarThickness:22 },
-    { type:'line', label:'Sell-in 목표', data: rollup.map(e=> e.sellInTargetKrw ? e.sellInTargetKrw/1421.48 : null), borderColor:'#9aa2b1', borderDash:[4,3], borderWidth:2, pointRadius:0, spanGaps:true }
+    { type:'line', label:'COP', data: rollup.map(e=> e.sellInTargetKrw ? e.sellInTargetKrw/1421.48 : null), borderColor:'#9aa2b1', borderDash:[4,3], borderWidth:2, pointRadius:0, spanGaps:true }
   ];
   if (!monthlyChartInstance){
     const ctx = document.getElementById('monthlyChart');
@@ -282,7 +333,15 @@ function renderMonthlyDetail(rollup, selectedKey){
   }
 
   cards[2].querySelector('.value').textContent = e.hasMkt ? fmtUsd(e.mktActUsd) : '—';
-  cards[2].querySelector('.sub').textContent = e.hasMkt ? (e.mktEstUsd ? `예산 ${fmtUsd(e.mktEstUsd)} 대비` : '예산 미상') : '마케팅비 데이터 없음';
+  cards[2].querySelector('.sub').textContent = e.hasMkt ? (e.mktEstUsd ? `예산 ${fmtUsd(e.mktEstUsd)} 대비` : '예산 미상') : 'COOP 데이터 없음';
+
+  const projNoteEl = document.getElementById('orderProjNote');
+  if (e.orderProjUsd){
+    projNoteEl.style.display = 'block';
+    projNoteEl.textContent = `(참고) ULTA 자체 발주 예측: ${fmtUsd(e.orderProjUsd)} — ULTA 시스템이 자동 생성한 비확정 추정치로, COP/실적 비교에는 반영되지 않습니다.`;
+  } else {
+    projNoteEl.style.display = 'none';
+  }
 
   const siPctEl = document.getElementById('siGaugePct');
   const siBarEl = document.getElementById('siGaugeBar');
@@ -292,15 +351,15 @@ function renderMonthlyDetail(rollup, selectedKey){
     const c = achColor(pct, 'goal');
     siPctEl.textContent = pctStr(pct); siPctEl.style.color = c.fg;
     siBarEl.style.width = Math.min(100,pct) + '%'; siBarEl.style.background = c.bg;
-    siNoteEl.textContent = `목표 ${fmtKrw(e.sellInTargetKrw)} 대비 실적 ${fmtKrw(e.sellInActualKrw)}`;
+    siNoteEl.textContent = `COP ${fmtKrw(e.sellInTargetKrw)} 대비 실적 ${fmtKrw(e.sellInActualKrw)}`;
   } else if (e.sellInTargetKrw){
     siPctEl.textContent = '진행중'; siPctEl.style.color = 'var(--muted)';
     siBarEl.style.width = '0%';
-    siNoteEl.textContent = `목표 ${fmtKrw(e.sellInTargetKrw)} (실적 반영 대기중)`;
+    siNoteEl.textContent = `COP ${fmtKrw(e.sellInTargetKrw)} (실적 반영 대기중)`;
   } else {
     siPctEl.textContent = '-'; siPctEl.style.color = 'var(--muted)';
     siBarEl.style.width = '0%';
-    siNoteEl.textContent = '이 달의 목표(포캐스트) 데이터 없음';
+    siNoteEl.textContent = '이 달의 COP(포캐스트) 데이터 없음';
   }
 
   const mkPctEl = document.getElementById('mkGaugePct');
@@ -315,14 +374,121 @@ function renderMonthlyDetail(rollup, selectedKey){
   } else {
     mkPctEl.textContent = '-'; mkPctEl.style.color = 'var(--muted)';
     mkBarEl.style.width = '0%';
-    mkNoteEl.textContent = e.hasMkt ? '이 달의 예산(Estimated) 정보 없음' : '이 달의 마케팅비 데이터 없음';
+    mkNoteEl.textContent = e.hasMkt ? '이 달의 예산(Estimated) 정보 없음' : '이 달의 COOP 데이터 없음';
   }
+}
+
+function renderStoreRankTable(byMonth, key){
+  const tbody = document.querySelector('#storeRankTable tbody');
+  const m = byMonth[key];
+  if (!m || !m.topStores || !m.topStores.length){
+    tbody.innerHTML = '<tr><td colspan="5" class="empty-hint">데이터 없음</td></tr>';
+    return;
+  }
+  tbody.innerHTML = m.topStores.map((s,i)=>`<tr><td>${i+1}</td><td>${s.storeName} <span style="color:var(--muted);">(#${s.storeNum})</span></td><td>${fmtUsd(s.sales)}</td><td>${s.units.toLocaleString('en-US')}</td><td>${s.pctOfTotal}%</td></tr>`).join('');
+}
+
+function initStoreRanking(storeRanking){
+  const section = document.getElementById('storeRankDesc');
+  const sel = document.getElementById('storeMonthPicker');
+  const byMonth = (storeRanking && storeRanking.byMonth) || {};
+  const keys = Object.keys(byMonth).sort();
+  if (!keys.length){
+    section.textContent = '아직 매장별 데이터가 없습니다 (Store-Sales 원본 파일 업로드 필요)';
+    document.querySelector('#storeRankTable tbody').innerHTML = '<tr><td colspan="5" class="empty-hint">데이터 없음</td></tr>';
+    sel.style.display = 'none';
+    return;
+  }
+  sel.innerHTML = '';
+  keys.forEach(k=>{
+    const opt = document.createElement('option');
+    opt.value = k; opt.textContent = monthKeyToKoreanLabel(k);
+    sel.appendChild(opt);
+  });
+  sel.value = keys[keys.length-1];
+  function describe(k){
+    const m = byMonth[k];
+    const weekCount = (m.weeksIncluded||[]).length;
+    section.textContent = `상위 ${m.topStores.length}개 매장 (해당 월 중 원본 파일이 있는 ${weekCount}개 주 기준, 매장 수 ${m.storeCount.toLocaleString('en-US')}개, 월 합계 ${fmtUsd(m.totalSales)})`;
+  }
+  describe(sel.value);
+  renderStoreRankTable(byMonth, sel.value);
+  sel.addEventListener('change', (ev)=>{
+    describe(ev.target.value);
+    renderStoreRankTable(byMonth, ev.target.value);
+  });
+}
+
+function oosColor(pct){
+  if (pct >= 8) return 'var(--bad)';
+  if (pct >= 4) return 'var(--warn)';
+  return 'var(--good)';
+}
+
+function renderSkuMonth(skuData, oosData, key){
+  const skuMonth = (skuData && skuData.byMonth && skuData.byMonth[key]) || null;
+  const oosMonth = (oosData && oosData.byMonth && oosData.byMonth[key]) || null;
+  const desc = document.getElementById('skuDesc');
+  const kpis = document.getElementById('skuKpis');
+
+  if (!skuMonth){
+    desc.textContent = '데이터 없음';
+    kpis.style.display = 'none';
+    document.querySelector('#skuSalesTable tbody').innerHTML = '<tr><td colspan="4" class="empty-hint">데이터 없음</td></tr>';
+    document.querySelector('#oosTable tbody').innerHTML = '<tr><td colspan="4" class="empty-hint">데이터 없음</td></tr>';
+    return;
+  }
+
+  desc.textContent = `Sales_Inv_Perf 원본 리포트 기준 (SKU ${skuMonth.skuCount}개 집계)`;
+  kpis.style.display = 'grid';
+
+  document.getElementById('top3PctValue').textContent = skuMonth.top3Pct + '%';
+  document.getElementById('top3SubValue').textContent = `${fmtUsd(skuMonth.top3Sales)} / 전체 ${fmtUsd(skuMonth.totalSales)}`;
+
+  const oosPct = oosMonth ? oosMonth.overallAvgOosPct : null;
+  const oosEl = document.getElementById('oosAvgValue');
+  oosEl.textContent = oosPct!=null ? oosPct + '%' : '—';
+  oosEl.style.color = oosPct!=null ? oosColor(oosPct) : '';
+  document.getElementById('oosSubValue').textContent = oosMonth ? `추적 SKU ${oosMonth.trackedSkuCount}개 가중평균` : 'OOS 데이터 없음';
+
+  document.querySelector('#skuSalesTable tbody').innerHTML = skuMonth.topSkus.map((s,i)=>`<tr><td>${i+1}</td><td>${s.desc}</td><td>${fmtUsd(s.sales)}</td><td>${s.pct}%</td></tr>`).join('');
+
+  const oosRows = (oosMonth && oosMonth.topOosSkus) || [];
+  if (!oosRows.length){
+    document.querySelector('#oosTable tbody').innerHTML = '<tr><td colspan="4" class="empty-hint">OOS 데이터 없음</td></tr>';
+  } else {
+    document.querySelector('#oosTable tbody').innerHTML = oosRows.map(o=>`<tr><td>${o.desc}</td><td style="color:${oosColor(o.avgOosPct)}; font-weight:600;">${o.avgOosPct}%</td><td>${o.maxOosPct}%</td><td>${o.weeks}주</td></tr>`).join('');
+  }
+}
+
+function initSkuOos(skuData, oosData){
+  const sel = document.getElementById('skuMonthPicker');
+  const keys = Object.keys((skuData && skuData.byMonth) || {}).sort();
+  if (!keys.length){
+    document.getElementById('skuDesc').textContent = '아직 SKU별 데이터가 없습니다 (Sales_Inv_Perf 원본 파일 업로드 필요)';
+    document.getElementById('skuKpis').style.display = 'none';
+    document.querySelector('#skuSalesTable tbody').innerHTML = '<tr><td colspan="4" class="empty-hint">데이터 없음</td></tr>';
+    document.querySelector('#oosTable tbody').innerHTML = '<tr><td colspan="4" class="empty-hint">데이터 없음</td></tr>';
+    sel.style.display = 'none';
+    return;
+  }
+  sel.innerHTML = '';
+  keys.forEach(k=>{
+    const opt = document.createElement('option');
+    opt.value = k; opt.textContent = monthKeyToKoreanLabel(k);
+    sel.appendChild(opt);
+  });
+  sel.value = keys[keys.length-1];
+  renderSkuMonth(skuData, oosData, sel.value);
+  sel.addEventListener('change', (ev)=>{
+    renderSkuMonth(skuData, oosData, ev.target.value);
+  });
 }
 
 function renderCategoryChart(marketing){
   const el = document.getElementById('categoryChart');
   if (!marketing || !marketing.categories || !marketing.categories.length){
-    el.innerHTML = '<div class="empty-hint">마케팅 데이터가 없습니다</div>';
+    el.innerHTML = '<div class="empty-hint">COOP 데이터가 없습니다</div>';
     return;
   }
   const cats = [...marketing.categories].filter(c=>c.actCost>0).sort((a,b)=>b.actCost-a.actCost);
@@ -346,25 +512,31 @@ async function init(){
     const kpiMonthly = snapshot.kpiMonthly || [];
     const target = snapshot.target || null;
     const marketing = snapshot.marketing || null;
+    const orderProjection = snapshot.orderProjection || null;
+    const storeRanking = snapshot.storeRanking || null;
+    const skuSales = snapshot.skuSales || null;
+    const skuOos = snapshot.skuOos || null;
 
     const updatedAt = snapshot.snapshotUpdatedAt ? new Date(snapshot.snapshotUpdatedAt) : null;
     document.getElementById('headerSub').textContent = updatedAt
       ? `마지막 업데이트: ${updatedAt.toLocaleString('ko-KR')} · 업데이트: ${snapshot.updatedBy || '-'}`
       : '업데이트 정보 없음';
 
-    const rollup = buildMonthlyRollup(weekly, kpiMonthly, target, marketing);
+    const rollup = buildMonthlyRollup(weekly, kpiMonthly, target, marketing, orderProjection);
     rollupCache = rollup;
 
     if (rollup.length === 0){
       document.getElementById('monthlyDesc').textContent = '데이터가 없습니다';
-      document.querySelector('#monthlyTable tbody').innerHTML = '<tr><td colspan="5" class="empty-hint">데이터 없음</td></tr>';
+      document.querySelector('#monthlyTable tbody').innerHTML = '<tr><td colspan="6" class="empty-hint">데이터 없음</td></tr>';
       renderCategoryChart(marketing);
+      initStoreRanking(storeRanking);
+      initSkuOos(skuSales, skuOos);
       return;
     }
 
     populateMonthPicker(rollup);
     const selectedKey = document.getElementById('monthPicker').value;
-    document.getElementById('monthlyDesc').textContent = '월을 선택하면 그 달의 실적과 목표 달성률을 볼 수 있습니다';
+    document.getElementById('monthlyDesc').textContent = '월을 선택하면 그 달의 실적과 COP 달성률을 볼 수 있습니다';
     document.getElementById('monthlyKpis').style.display = 'grid';
     document.getElementById('monthlyGauges').style.display = 'grid';
     document.getElementById('monthlyLegend').style.display = 'flex';
@@ -372,8 +544,10 @@ async function init(){
     renderMonthlyDetail(rollup, selectedKey);
     renderMonthlyChart(rollup, selectedKey);
     renderCategoryChart(marketing);
+    initStoreRanking(storeRanking);
+    initSkuOos(skuSales, skuOos);
 
-    document.querySelector('#monthlyTable tbody').innerHTML = rollup.map(e=>`<tr><td>${e.label}</td><td>${e.hasSellThrough? fmtUsd(e.sellThroughUsd):'-'}</td><td>${e.sellInActualUsd!=null? fmtUsd(e.sellInActualUsd):'-'}</td><td>${e.sellInTargetKrw? fmtKrw(e.sellInTargetKrw):'-'}</td><td>${e.hasMkt? fmtUsd(e.mktActUsd):'-'}</td></tr>`).join('');
+    document.querySelector('#monthlyTable tbody').innerHTML = rollup.map(e=>`<tr><td>${e.label}</td><td>${e.hasSellThrough? fmtUsd(e.sellThroughUsd):'-'}</td><td>${e.sellInActualUsd!=null? fmtUsd(e.sellInActualUsd):'-'}</td><td>${e.sellInTargetKrw? fmtKrw(e.sellInTargetKrw):'-'}</td><td>${e.hasMkt? fmtUsd(e.mktActUsd):'-'}</td><td style="color:var(--muted); font-style:italic;">${e.orderProjUsd? fmtUsd(e.orderProjUsd):'-'}</td></tr>`).join('');
 
     document.getElementById('monthPicker').addEventListener('change', (ev)=>{
       renderMonthlyDetail(rollupCache, ev.target.value);
