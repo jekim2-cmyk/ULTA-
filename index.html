@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Celimax x ULTA 팀 대시보드</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  :root{
+    --navy:#12213c; --navy2:#1c3159; --orange:#e8712f;
+    --bg:#f4f6fa; --card:#ffffff; --text:#1c2430; --muted:#6b7688; --border:#e3e7ee;
+    --good:#2f9e63; --warn:#e8712f; --bad:#d0453c; --blue:#3a6ea5;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);}
+  .wrap{max-width:1000px;margin:0 auto;padding:24px 20px 60px;}
+  header{background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;padding:22px 26px;border-radius:12px;margin-bottom:18px;}
+  header h1{margin:0 0 4px;font-size:19px;font-weight:700;}
+  header p{margin:0;color:#c7d0e0;font-size:12px;}
+  .section{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px 22px;margin-bottom:18px;}
+  .section h2{margin:0 0 4px;font-size:15px;font-weight:700;color:var(--navy);}
+  .desc{font-size:12px;color:var(--muted);margin-bottom:12px;}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:16px;}
+  .kpi{background:#f8f9fb;border-radius:10px;padding:14px 16px;}
+  .kpi .label{font-size:11.5px;color:var(--muted);margin-bottom:6px;}
+  .kpi .value{font-size:22px;font-weight:700;color:var(--navy);}
+  .kpi .sub{font-size:11px;color:var(--muted);margin-top:4px;}
+  table{width:100%;border-collapse:collapse;font-size:12px;}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);border-bottom:2px solid var(--border);padding:6px 8px;}
+  td{padding:7px 8px;border-bottom:1px solid var(--border);}
+  .bar-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:12px;}
+  .bar-label{width:170px;flex-shrink:0;color:var(--text);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .bar-track{flex:1;background:#eef1f6;border-radius:6px;height:14px;overflow:hidden;}
+  .bar-fill{height:100%;border-radius:6px;background:linear-gradient(90deg,var(--blue),#6fa3d8);}
+  .bar-val{width:80px;text-align:right;font-weight:600;color:var(--navy);flex-shrink:0;font-size:11.5px;}
+  .empty-hint{color:var(--muted);font-size:12px;padding:16px 0;text-align:center;}
+  select{font-size:13px;padding:6px 10px;border-radius:8px;border:1px solid var(--border);}
+  .footer-note{font-size:11px;color:var(--muted);text-align:center;padding:8px 0 0;}
+  .legend{display:flex;gap:14px;font-size:11px;color:var(--muted);margin-bottom:10px;}
+  .legend span{display:flex;align-items:center;gap:6px;}
+  .dot{width:9px;height:9px;border-radius:3px;display:inline-block;}
+  .dot.orange{background:var(--orange);}
+  .dot.blue{background:var(--blue);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Celimax × ULTA 팀 대시보드</h1>
+  <p id="headerSub">데이터를 불러오는 중...</p>
+</header>
+
+<div class="section">
+  <h2>월별 종합 요약</h2>
+  <div class="desc" id="monthlyDesc">불러오는 중...</div>
+
+  <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+    <label for="monthPicker" style="font-size:12.5px; color:var(--muted);">조회 월</label>
+    <select id="monthPicker"></select>
+  </div>
+
+  <div class="kpis" id="monthlyKpis" style="display:none;">
+    <div class="kpi"><div class="label">Sell-through (POS)</div><div class="value">—</div><div class="sub">-</div></div>
+    <div class="kpi"><div class="label">Sell-in (내부 출고)</div><div class="value">—</div><div class="sub">-</div></div>
+    <div class="kpi"><div class="label">마케팅비 (Actual)</div><div class="value">—</div><div class="sub">-</div></div>
+  </div>
+
+  <div id="monthlyGauges" style="display:none; grid-template-columns:repeat(auto-fit, minmax(220px,1fr)); gap:16px; margin-bottom:20px;">
+    <div>
+      <div style="display:flex; justify-content:space-between; font-size:12.5px; color:var(--muted); margin-bottom:6px;">
+        <span>Sell-in 목표 달성률</span>
+        <span id="siGaugePct" style="font-weight:700;">-</span>
+      </div>
+      <div style="height:8px; border-radius:99px; background:#eef1f6; overflow:hidden;">
+        <div id="siGaugeBar" style="height:100%; width:0%; border-radius:99px;"></div>
+      </div>
+      <p id="siGaugeNote" style="font-size:11px; color:var(--muted); margin:6px 0 0;">-</p>
+    </div>
+    <div>
+      <div style="display:flex; justify-content:space-between; font-size:12.5px; color:var(--muted); margin-bottom:6px;">
+        <span>마케팅 예산 소진율</span>
+        <span id="mkGaugePct" style="font-weight:700;">-</span>
+      </div>
+      <div style="height:8px; border-radius:99px; background:#eef1f6; overflow:hidden;">
+        <div id="mkGaugeBar" style="height:100%; width:0%; border-radius:99px;"></div>
+      </div>
+      <p id="mkGaugeNote" style="font-size:11px; color:var(--muted); margin:6px 0 0;">-</p>
+    </div>
+  </div>
+
+  <div class="legend" id="monthlyLegend" style="display:none;">
+    <span><span class="dot blue"></span>Sell-in</span>
+    <span><span class="dot orange"></span>Sell-through</span>
+    <span style="display:flex; align-items:center; gap:6px;"><span style="width:16px; height:0; border-top:2px dashed #9aa2b1; display:inline-block;"></span>Sell-in 목표</span>
+  </div>
+  <div style="position:relative; width:100%; height:260px; margin-bottom:8px;" id="monthlyChartWrap">
+    <canvas id="monthlyChart" role="img" aria-label="월별 Sell-in, Sell-through 실적과 Sell-in 목표선 추이 차트"></canvas>
+  </div>
+
+  <table id="monthlyTable" style="margin-top:14px;">
+    <thead><tr><th>월</th><th>Sell-through</th><th>Sell-in</th><th>Sell-in 목표</th><th>마케팅비</th></tr></thead>
+    <tbody><tr><td colspan="5" class="empty-hint">불러오는 중...</td></tr></tbody>
+  </table>
+</div>
+
+<div class="section">
+  <h2>카테고리별 누적 마케팅비 <span style="font-size:11px;color:var(--muted);font-weight:400;">(전체 기간)</span></h2>
+  <div id="categoryChart"><div class="empty-hint">불러오는 중...</div></div>
+</div>
+
+<div class="footer-note" id="footerNote">이 페이지는 data.json 파일의 내용을 보여줍니다. 데이터 갱신은 담당자가 data.json 파일을 교체(재배포)해야 반영됩니다.</div>
+
+</div>
+
+<script>
+function fmtUsd(n){ return '$' + Number(n).toLocaleString('en-US', {maximumFractionDigits:0}); }
+function fmtKrw(n){ return '₩' + Number(n).toLocaleString('en-US', {maximumFractionDigits:0}); }
+function pctStr(n){ return (n>=0?'+':'') + n.toFixed(1) + '%'; }
+
+function parseKoreanMonthLabel(label){
+  const m = String(label).match(/(\d{2,4})\s*년\s*(\d{1,2})\s*월/);
+  if (!m) return null;
+  let y = m[1];
+  if (y.length === 2) y = '20' + y;
+  const mo = String(parseInt(m[2],10)).padStart(2,'0');
+  return `${y}-${mo}`;
+}
+function monthKeyToKoreanLabel(key){
+  const [y,m] = key.split('-');
+  return `${y.slice(2)}년 ${parseInt(m,10)}월`;
+}
+const MONTH_ABBR = {JAN:1,FEB:2,MAR:3,APR:4,MAY:5,JUN:6,JUL:7,AUG:8,SEP:9,SEPT:9,OCT:10,NOV:11,DEC:12};
+function marketingMonthToKey(raw, referenceYear){
+  if (!raw) return null;
+  const abbr = String(raw).trim().toUpperCase();
+  const num = MONTH_ABBR[abbr];
+  if (!num) return null;
+  const year = num >= 10 ? referenceYear - 1 : referenceYear;
+  return `${year}-${String(num).padStart(2,'0')}`;
+}
+
+function buildMonthlyRollup(weekly, kpiMonthly, target, marketing){
+  const map = {};
+  function ensure(key){
+    if (!map[key]) map[key] = {
+      key, label: monthKeyToKoreanLabel(key),
+      sellThroughUsd: 0, hasSellThrough: false,
+      sellInActualUsd: null, sellInActualKrw: null,
+      sellInTargetKrw: null,
+      mktEstUsd: 0, mktActUsd: 0, hasMkt: false
+    };
+    return map[key];
+  }
+  Object.values(weekly).forEach(w=>{
+    if (!w.weekEndDate) return;
+    const key = w.weekEndDate.slice(0,7);
+    const e = ensure(key);
+    e.sellThroughUsd += (w.totalSales||0);
+    e.hasSellThrough = true;
+  });
+  kpiMonthly.forEach(m=>{
+    const key = parseKoreanMonthLabel(m.month);
+    if (!key) return;
+    const e = ensure(key);
+    e.sellInActualUsd = (e.sellInActualUsd||0) + m.usdSales;
+    e.sellInActualKrw = (e.sellInActualKrw||0) + m.krwSales;
+  });
+  if (target && target.byMonth){
+    Object.keys(target.byMonth).forEach(key=>{
+      const v = target.byMonth[key];
+      if (!v) return;
+      ensure(key).sellInTargetKrw = v;
+    });
+  }
+  const years = [];
+  kpiMonthly.forEach(m=>{ const k = parseKoreanMonthLabel(m.month); if (k) years.push(parseInt(k.slice(0,4),10)); });
+  if (target && target.byMonth) Object.keys(target.byMonth).forEach(k=>years.push(parseInt(k.slice(0,4),10)));
+  const referenceYear = years.length ? Math.max(...years) : new Date().getFullYear();
+  if (marketing && marketing.items){
+    marketing.items.forEach(it=>{
+      const key = marketingMonthToKey(it.month, referenceYear);
+      if (!key) return;
+      const e = ensure(key);
+      e.mktEstUsd += it.estCost;
+      e.mktActUsd += it.actCost;
+      e.hasMkt = true;
+    });
+  }
+  return Object.values(map).sort((a,b)=>a.key.localeCompare(b.key));
+}
+
+function achColor(p, kind){
+  if (kind === 'goal'){
+    if (p >= 100) return {fg:'var(--good)', bg:'var(--good)'};
+    if (p >= 85) return {fg:'var(--warn)', bg:'var(--warn)'};
+    return {fg:'var(--bad)', bg:'var(--bad)'};
+  }
+  if (p > 115) return {fg:'var(--bad)', bg:'var(--bad)'};
+  if (p >= 90) return {fg:'var(--good)', bg:'var(--good)'};
+  return {fg:'var(--warn)', bg:'var(--warn)'};
+}
+
+let monthlyChartInstance = null;
+let rollupCache = [];
+
+function populateMonthPicker(rollup){
+  const sel = document.getElementById('monthPicker');
+  sel.innerHTML = '';
+  rollup.forEach(e=>{
+    const opt = document.createElement('option');
+    opt.value = e.key; opt.textContent = e.label;
+    sel.appendChild(opt);
+  });
+  let idx = rollup.length - 1;
+  for (let i=rollup.length-1;i>=0;i--){
+    if (rollup[i].hasSellThrough || rollup[i].sellInActualUsd!=null){ idx = i; break; }
+  }
+  if (rollup.length) sel.value = rollup[idx].key;
+}
+
+function renderMonthlyChart(rollup, selectedKey){
+  const wrap = document.getElementById('monthlyChartWrap');
+  if (rollup.length === 0){
+    if (monthlyChartInstance){ monthlyChartInstance.destroy(); monthlyChartInstance = null; }
+    wrap.style.display = 'none';
+    return;
+  }
+  wrap.style.display = 'block';
+  const labels = rollup.map(e=>e.label);
+  const baseBlue = '#3a6ea5', dimBlue = 'rgba(58,110,165,0.25)';
+  const baseOrange = '#e8712f', dimOrange = 'rgba(232,113,47,0.25)';
+  const selIdx = rollup.findIndex(e=>e.key === selectedKey);
+  const siColors = rollup.map((e,i)=> i===selIdx ? baseBlue : dimBlue);
+  const stColors = rollup.map((e,i)=> i===selIdx ? baseOrange : dimOrange);
+  const datasets = [
+    { type:'bar', label:'Sell-in', data: rollup.map(e=>e.sellInActualUsd), backgroundColor: siColors, borderRadius:4, maxBarThickness:22 },
+    { type:'bar', label:'Sell-through', data: rollup.map(e=>e.sellThroughUsd || null), backgroundColor: stColors, borderRadius:4, maxBarThickness:22 },
+    { type:'line', label:'Sell-in 목표', data: rollup.map(e=> e.sellInTargetKrw ? e.sellInTargetKrw/1421.48 : null), borderColor:'#9aa2b1', borderDash:[4,3], borderWidth:2, pointRadius:0, spanGaps:true }
+  ];
+  if (!monthlyChartInstance){
+    const ctx = document.getElementById('monthlyChart');
+    monthlyChartInstance = new Chart(ctx, {
+      data: { labels, datasets },
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label:function(c){ return c.dataset.label + ': ' + (c.raw==null?'-':fmtUsd(c.raw)); } } } },
+        scales:{
+          x:{ grid:{ display:false }, ticks:{ font:{size:11} } },
+          y:{ grid:{ color:'#eef1f6' }, ticks:{ font:{size:11}, callback:function(v){ return '$' + (v/1000) + 'k'; } } }
+        }
+      }
+    });
+  } else {
+    monthlyChartInstance.data.labels = labels;
+    monthlyChartInstance.data.datasets = datasets;
+    monthlyChartInstance.update();
+  }
+}
+
+function renderMonthlyDetail(rollup, selectedKey){
+  const idx = rollup.findIndex(e=>e.key === selectedKey);
+  if (idx === -1) return;
+  const e = rollup[idx];
+  const prev = idx > 0 ? rollup[idx-1] : null;
+  const cards = document.getElementById('monthlyKpis').children;
+
+  cards[0].querySelector('.value').textContent = e.hasSellThrough ? fmtUsd(e.sellThroughUsd) : '—';
+  if (prev && prev.hasSellThrough && e.hasSellThrough && prev.sellThroughUsd){
+    const mom = (e.sellThroughUsd - prev.sellThroughUsd) / prev.sellThroughUsd * 100;
+    cards[0].querySelector('.sub').innerHTML = '전월 대비 <span style="color:' + (mom>=0?'var(--good)':'var(--bad)') + '">' + pctStr(mom) + '</span>';
+  } else {
+    cards[0].querySelector('.sub').textContent = e.hasSellThrough ? '비교할 이전월 없음' : 'POS 데이터 없음';
+  }
+
+  cards[1].querySelector('.value').textContent = e.sellInActualUsd!=null ? fmtUsd(e.sellInActualUsd) : '—';
+  if (prev && prev.sellInActualUsd!=null && e.sellInActualUsd!=null && prev.sellInActualUsd){
+    const mom = (e.sellInActualUsd - prev.sellInActualUsd) / prev.sellInActualUsd * 100;
+    cards[1].querySelector('.sub').innerHTML = '전월 대비 <span style="color:' + (mom>=0?'var(--good)':'var(--bad)') + '">' + pctStr(mom) + '</span>';
+  } else {
+    cards[1].querySelector('.sub').textContent = e.sellInActualUsd!=null ? fmtKrw(e.sellInActualKrw) : '내부 KPI 데이터 없음';
+  }
+
+  cards[2].querySelector('.value').textContent = e.hasMkt ? fmtUsd(e.mktActUsd) : '—';
+  cards[2].querySelector('.sub').textContent = e.hasMkt ? (e.mktEstUsd ? `예산 ${fmtUsd(e.mktEstUsd)} 대비` : '예산 미상') : '마케팅비 데이터 없음';
+
+  const siPctEl = document.getElementById('siGaugePct');
+  const siBarEl = document.getElementById('siGaugeBar');
+  const siNoteEl = document.getElementById('siGaugeNote');
+  if (e.sellInTargetKrw && e.sellInActualKrw!=null){
+    const pct = e.sellInActualKrw / e.sellInTargetKrw * 100;
+    const c = achColor(pct, 'goal');
+    siPctEl.textContent = pctStr(pct); siPctEl.style.color = c.fg;
+    siBarEl.style.width = Math.min(100,pct) + '%'; siBarEl.style.background = c.bg;
+    siNoteEl.textContent = `목표 ${fmtKrw(e.sellInTargetKrw)} 대비 실적 ${fmtKrw(e.sellInActualKrw)}`;
+  } else if (e.sellInTargetKrw){
+    siPctEl.textContent = '진행중'; siPctEl.style.color = 'var(--muted)';
+    siBarEl.style.width = '0%';
+    siNoteEl.textContent = `목표 ${fmtKrw(e.sellInTargetKrw)} (실적 반영 대기중)`;
+  } else {
+    siPctEl.textContent = '-'; siPctEl.style.color = 'var(--muted)';
+    siBarEl.style.width = '0%';
+    siNoteEl.textContent = '이 달의 목표(포캐스트) 데이터 없음';
+  }
+
+  const mkPctEl = document.getElementById('mkGaugePct');
+  const mkBarEl = document.getElementById('mkGaugeBar');
+  const mkNoteEl = document.getElementById('mkGaugeNote');
+  if (e.hasMkt && e.mktEstUsd){
+    const pct = e.mktActUsd / e.mktEstUsd * 100;
+    const c = achColor(pct, 'budget');
+    mkPctEl.textContent = pctStr(pct); mkPctEl.style.color = c.fg;
+    mkBarEl.style.width = Math.min(100,pct) + '%'; mkBarEl.style.background = c.bg;
+    mkNoteEl.textContent = `예산 ${fmtUsd(e.mktEstUsd)} 중 ${fmtUsd(e.mktActUsd)} 집행`;
+  } else {
+    mkPctEl.textContent = '-'; mkPctEl.style.color = 'var(--muted)';
+    mkBarEl.style.width = '0%';
+    mkNoteEl.textContent = e.hasMkt ? '이 달의 예산(Estimated) 정보 없음' : '이 달의 마케팅비 데이터 없음';
+  }
+}
+
+function renderCategoryChart(marketing){
+  const el = document.getElementById('categoryChart');
+  if (!marketing || !marketing.categories || !marketing.categories.length){
+    el.innerHTML = '<div class="empty-hint">마케팅 데이터가 없습니다</div>';
+    return;
+  }
+  const cats = [...marketing.categories].filter(c=>c.actCost>0).sort((a,b)=>b.actCost-a.actCost);
+  const max = Math.max(1, ...cats.map(c=>c.actCost));
+  el.innerHTML = '';
+  cats.forEach(c=>{
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+    row.innerHTML = `<div class="bar-label">${c.category}</div><div class="bar-track"><div class="bar-fill" style="width:${c.actCost/max*100}%"></div></div><div class="bar-val">${fmtUsd(c.actCost)}</div>`;
+    el.appendChild(row);
+  });
+}
+
+async function init(){
+  try {
+    const res = await fetch('./data.json', {cache:'no-store'});
+    if (!res.ok) throw new Error('data.json 로드 실패 (' + res.status + ')');
+    const snapshot = await res.json();
+
+    const weekly = snapshot.weekly || {};
+    const kpiMonthly = snapshot.kpiMonthly || [];
+    const target = snapshot.target || null;
+    const marketing = snapshot.marketing || null;
+
+    const updatedAt = snapshot.snapshotUpdatedAt ? new Date(snapshot.snapshotUpdatedAt) : null;
+    document.getElementById('headerSub').textContent = updatedAt
+      ? `마지막 업데이트: ${updatedAt.toLocaleString('ko-KR')} · 업데이트: ${snapshot.updatedBy || '-'}`
+      : '업데이트 정보 없음';
+
+    const rollup = buildMonthlyRollup(weekly, kpiMonthly, target, marketing);
+    rollupCache = rollup;
+
+    if (rollup.length === 0){
+      document.getElementById('monthlyDesc').textContent = '데이터가 없습니다';
+      document.querySelector('#monthlyTable tbody').innerHTML = '<tr><td colspan="5" class="empty-hint">데이터 없음</td></tr>';
+      renderCategoryChart(marketing);
+      return;
+    }
+
+    populateMonthPicker(rollup);
+    const selectedKey = document.getElementById('monthPicker').value;
+    document.getElementById('monthlyDesc').textContent = '월을 선택하면 그 달의 실적과 목표 달성률을 볼 수 있습니다';
+    document.getElementById('monthlyKpis').style.display = 'grid';
+    document.getElementById('monthlyGauges').style.display = 'grid';
+    document.getElementById('monthlyLegend').style.display = 'flex';
+
+    renderMonthlyDetail(rollup, selectedKey);
+    renderMonthlyChart(rollup, selectedKey);
+    renderCategoryChart(marketing);
+
+    document.querySelector('#monthlyTable tbody').innerHTML = rollup.map(e=>`<tr><td>${e.label}</td><td>${e.hasSellThrough? fmtUsd(e.sellThroughUsd):'-'}</td><td>${e.sellInActualUsd!=null? fmtUsd(e.sellInActualUsd):'-'}</td><td>${e.sellInTargetKrw? fmtKrw(e.sellInTargetKrw):'-'}</td><td>${e.hasMkt? fmtUsd(e.mktActUsd):'-'}</td></tr>`).join('');
+
+    document.getElementById('monthPicker').addEventListener('change', (ev)=>{
+      renderMonthlyDetail(rollupCache, ev.target.value);
+      renderMonthlyChart(rollupCache, ev.target.value);
+    });
+  } catch(err){
+    document.getElementById('headerSub').textContent = '데이터를 불러오는 중 오류가 발생했습니다: ' + err.message;
+    console.error('init error', err);
+  }
+}
+
+init();
+</script>
+</body>
+</html>
