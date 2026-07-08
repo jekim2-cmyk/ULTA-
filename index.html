@@ -146,6 +146,32 @@
 </div>
 
 <div class="section">
+  <h2>재무 지표 (CFO 뷰)</h2>
+  <div class="desc" id="finDesc">불러오는 중...</div>
+  <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+    <label for="finMonthPicker" style="font-size:12.5px; color:var(--muted);">조회 월</label>
+    <select id="finMonthPicker"></select>
+  </div>
+
+  <div class="kpis" id="finKpis" style="display:none; grid-template-columns:repeat(auto-fit,minmax(160px,1fr));">
+    <div class="kpi"><div class="label">ULTA 소매 마진율</div><div class="value" id="marginValue">—</div><div class="sub">(Retail Price - Purch Cost) / Retail Price, 판매 가중평균</div></div>
+    <div class="kpi"><div class="label">재고 자산가치</div><div class="value" id="invUsdValue">—</div><div class="sub" id="invUsdSub">-</div></div>
+    <div class="kpi"><div class="label">재고 소진 기간 (WOS)</div><div class="value" id="invWosValue">—</div><div class="sub">현재 판매 속도 기준 재고 소진까지 걸리는 주수</div></div>
+    <div class="kpi"><div class="label">품절 추정 손실 매출</div><div class="value" id="lostSalesValue">—</div><div class="sub">OOS%로 추정한 미실현 매출 (근사치)</div></div>
+  </div>
+
+  <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); margin-top:14px;">
+    <div class="kpi"><div class="label">QTD 누적 매출</div><div class="value" id="qtdValue">—</div><div class="sub" id="qtdSub">-</div></div>
+    <div class="kpi"><div class="label">YTD 누적 매출</div><div class="value" id="ytdValue">—</div><div class="sub" id="ytdSub">-</div></div>
+  </div>
+
+  <p style="font-size:11px; color:var(--muted); margin-top:14px; line-height:1.6;">
+    <b>전년 대비 성장률(YoY)</b>: ULTA 판매 개시 후 아직 1년이 지나지 않아 작년 동기 데이터가 없습니다. 2027년부터 비교 가능해질 예정입니다.<br>
+    <b>차지백(Chargeback) 비용</b>: 별도 ULTA 포털 리포트 확인이 필요해 아직 미반영 상태입니다.
+  </p>
+</div>
+
+<div class="section">
   <h2>카테고리별 누적 COOP <span style="font-size:11px;color:var(--muted);font-weight:400;">(전체 기간)</span></h2>
   <div id="categoryChart"><div class="empty-hint">불러오는 중...</div></div>
 </div>
@@ -485,6 +511,54 @@ function initSkuOos(skuData, oosData){
   });
 }
 
+function renderFinMonth(finData, key){
+  const m = (finData && finData.byMonth && finData.byMonth[key]) || null;
+  const desc = document.getElementById('finDesc');
+  const kpis = document.getElementById('finKpis');
+  if (!m){
+    desc.textContent = '데이터 없음';
+    kpis.style.display = 'none';
+    return;
+  }
+  desc.textContent = 'Sales_Inv_Perf 원본 리포트 기준';
+  kpis.style.display = 'grid';
+
+  document.getElementById('marginValue').textContent = m.marginPct!=null ? m.marginPct + '%' : '—';
+  document.getElementById('invUsdValue').textContent = m.invEohUsd!=null ? fmtUsd(m.invEohUsd) : '—';
+  document.getElementById('invUsdSub').textContent = m.invAsOfWeek ? `${m.invAsOfWeek} 기준 재고 평가액` : '-';
+  document.getElementById('invWosValue').textContent = m.invWos!=null ? m.invWos + '주' : '—';
+  document.getElementById('lostSalesValue').textContent = m.lostSalesUsd!=null ? fmtUsd(m.lostSalesUsd) : '—';
+}
+
+function initFinancials(finData, qtdYtd){
+  const sel = document.getElementById('finMonthPicker');
+  const keys = Object.keys((finData && finData.byMonth) || {}).sort();
+  if (!keys.length){
+    document.getElementById('finDesc').textContent = '아직 재무 데이터가 없습니다';
+    document.getElementById('finKpis').style.display = 'none';
+    sel.style.display = 'none';
+  } else {
+    sel.innerHTML = '';
+    keys.forEach(k=>{
+      const opt = document.createElement('option');
+      opt.value = k; opt.textContent = monthKeyToKoreanLabel(k);
+      sel.appendChild(opt);
+    });
+    sel.value = keys[keys.length-1];
+    renderFinMonth(finData, sel.value);
+    sel.addEventListener('change', (ev)=> renderFinMonth(finData, ev.target.value));
+  }
+
+  if (qtdYtd && qtdYtd.qtd){
+    document.getElementById('qtdValue').textContent = fmtUsd(qtdYtd.qtd.totalSalesUsd);
+    document.getElementById('qtdSub').textContent = qtdYtd.qtd.label || '-';
+  }
+  if (qtdYtd && qtdYtd.ytd){
+    document.getElementById('ytdValue').textContent = fmtUsd(qtdYtd.ytd.totalSalesUsd);
+    document.getElementById('ytdSub').textContent = qtdYtd.ytd.label || '-';
+  }
+}
+
 function renderCategoryChart(marketing){
   const el = document.getElementById('categoryChart');
   if (!marketing || !marketing.categories || !marketing.categories.length){
@@ -516,6 +590,8 @@ async function init(){
     const storeRanking = snapshot.storeRanking || null;
     const skuSales = snapshot.skuSales || null;
     const skuOos = snapshot.skuOos || null;
+    const financials = snapshot.financials || null;
+    const qtdYtd = snapshot.qtdYtd || null;
 
     const updatedAt = snapshot.snapshotUpdatedAt ? new Date(snapshot.snapshotUpdatedAt) : null;
     document.getElementById('headerSub').textContent = updatedAt
@@ -531,6 +607,7 @@ async function init(){
       renderCategoryChart(marketing);
       initStoreRanking(storeRanking);
       initSkuOos(skuSales, skuOos);
+      initFinancials(financials, qtdYtd);
       return;
     }
 
@@ -546,6 +623,7 @@ async function init(){
     renderCategoryChart(marketing);
     initStoreRanking(storeRanking);
     initSkuOos(skuSales, skuOos);
+    initFinancials(financials, qtdYtd);
 
     document.querySelector('#monthlyTable tbody').innerHTML = rollup.map(e=>`<tr><td>${e.label}</td><td>${e.hasSellThrough? fmtUsd(e.sellThroughUsd):'-'}</td><td>${e.sellInActualUsd!=null? fmtUsd(e.sellInActualUsd):'-'}</td><td>${e.sellInTargetKrw? fmtKrw(e.sellInTargetKrw):'-'}</td><td>${e.hasMkt? fmtUsd(e.mktActUsd):'-'}</td><td style="color:var(--muted); font-style:italic;">${e.orderProjUsd? fmtUsd(e.orderProjUsd):'-'}</td></tr>`).join('');
 
