@@ -63,6 +63,7 @@
   <div class="kpis" id="monthlyKpis" style="display:none;">
     <div class="kpi"><div class="label">Sell-through (POS)</div><div class="value">—</div><div class="sub">-</div></div>
     <div class="kpi"><div class="label">Sell-in (내부 출고)</div><div class="value">—</div><div class="sub">-</div></div>
+    <div class="kpi"><div class="label">COP 월 달성률</div><div class="value">—</div><div class="sub">-</div></div>
     <div class="kpi"><div class="label">COOP (Actual)</div><div class="value">—</div><div class="sub">-</div></div>
   </div>
   <div id="orderProjNote" style="display:none; font-size:11px; color:var(--muted); font-style:italic; margin:-8px 0 16px;">-</div>
@@ -100,8 +101,8 @@
   </div>
 
   <table id="monthlyTable" style="margin-top:14px;">
-    <thead><tr><th>월</th><th>Sell-through</th><th>Sell-in</th><th>COP</th><th>COOP</th><th style="color:var(--muted); font-weight:400;">ULTA 발주예측 (참고)</th></tr></thead>
-    <tbody><tr><td colspan="6" class="empty-hint">불러오는 중...</td></tr></tbody>
+    <thead><tr><th>월</th><th>Sell-through</th><th>Sell-in</th><th>COP</th><th>COP 월 달성률</th><th>COOP</th><th style="color:var(--muted); font-weight:400;">ULTA 발주예측 (참고)</th></tr></thead>
+    <tbody><tr><td colspan="7" class="empty-hint">불러오는 중...</td></tr></tbody>
   </table>
 </div>
 
@@ -392,8 +393,21 @@ function renderMonthlyDetail(rollup, selectedKey){
     cards[1].querySelector('.sub').textContent = e.sellInActualUsd!=null ? fmtKrw(e.sellInActualKrw) : '내부 KPI 데이터 없음';
   }
 
-  cards[2].querySelector('.value').textContent = e.hasMkt ? fmtUsd(e.mktActUsd) : '—';
-  cards[2].querySelector('.sub').textContent = e.hasMkt ? (e.mktEstUsd ? `예산 ${fmtUsd(e.mktEstUsd)} 대비` : '예산 미상') : 'COOP 데이터 없음';
+  if (e.sellInTargetKrw && e.sellInActualKrw!=null){
+    const pct = e.sellInActualKrw / e.sellInTargetKrw * 100;
+    const c = achColor(pct, 'goal');
+    cards[2].querySelector('.value').innerHTML = `<span style="color:${c.fg}">${pctStr(pct)}</span>`;
+    cards[2].querySelector('.sub').textContent = `COP ${fmtKrw(e.sellInTargetKrw)} 대비 실적 ${fmtKrw(e.sellInActualKrw)}`;
+  } else if (e.sellInTargetKrw){
+    cards[2].querySelector('.value').textContent = '진행중';
+    cards[2].querySelector('.sub').textContent = `COP ${fmtKrw(e.sellInTargetKrw)} (실적 반영 대기중)`;
+  } else {
+    cards[2].querySelector('.value').textContent = '—';
+    cards[2].querySelector('.sub').textContent = '이 달의 COP(포캐스트) 데이터 없음';
+  }
+
+  cards[3].querySelector('.value').textContent = e.hasMkt ? fmtUsd(e.mktActUsd) : '—';
+  cards[3].querySelector('.sub').textContent = e.hasMkt ? (e.mktEstUsd ? `예산 ${fmtUsd(e.mktEstUsd)} 대비` : '예산 미상') : 'COOP 데이터 없음';
 
   const projNoteEl = document.getElementById('orderProjNote');
   if (e.orderProjUsd){
@@ -794,7 +808,7 @@ function initWeekly(weekly, rollup){
 
   typeSel.style.display = '';
   periodSel.style.display = '';
-  typeSel.value = 'month';
+  typeSel.value = 'year';
   populateWeeklyPeriodPicker(monthKeys, typeSel.value, periodSel);
   renderWeeklyPeriod(weeks, rollup, typeSel.value, periodSel.value);
 
@@ -851,7 +865,7 @@ async function init(){
 
     if (rollup.length === 0){
       document.getElementById('monthlyDesc').textContent = '데이터가 없습니다';
-      document.querySelector('#monthlyTable tbody').innerHTML = '<tr><td colspan="6" class="empty-hint">데이터 없음</td></tr>';
+      document.querySelector('#monthlyTable tbody').innerHTML = '<tr><td colspan="7" class="empty-hint">데이터 없음</td></tr>';
       initWeekly(weekly, rollup);
       renderCategoryChart(marketing);
       initStoreRanking(storeRanking);
@@ -875,7 +889,15 @@ async function init(){
     initSkuOos(skuSales, skuOos);
     initFinancials(financials, qtdYtd);
 
-    document.querySelector('#monthlyTable tbody').innerHTML = rollup.map(e=>`<tr><td>${e.label}</td><td>${e.hasSellThrough? fmtUsd(e.sellThroughUsd):'-'}</td><td>${e.sellInActualUsd!=null? fmtUsd(e.sellInActualUsd):'-'}</td><td>${e.sellInTargetKrw? fmtKrw(e.sellInTargetKrw):'-'}</td><td>${e.hasMkt? fmtUsd(e.mktActUsd):'-'}</td><td style="color:var(--muted); font-style:italic;">${e.orderProjUsd? fmtUsd(e.orderProjUsd):'-'}</td></tr>`).join('');
+    document.querySelector('#monthlyTable tbody').innerHTML = rollup.map(e=>{
+      let achCell = '-';
+      if (e.sellInTargetKrw && e.sellInActualKrw!=null){
+        const pct = e.sellInActualKrw / e.sellInTargetKrw * 100;
+        const c = achColor(pct, 'goal');
+        achCell = `<span style="color:${c.fg}; font-weight:600;">${pctStr(pct)}</span>`;
+      }
+      return `<tr><td>${e.label}</td><td>${e.hasSellThrough? fmtUsd(e.sellThroughUsd):'-'}</td><td>${e.sellInActualUsd!=null? fmtUsd(e.sellInActualUsd):'-'}</td><td>${e.sellInTargetKrw? fmtKrw(e.sellInTargetKrw):'-'}</td><td>${achCell}</td><td>${e.hasMkt? fmtUsd(e.mktActUsd):'-'}</td><td style="color:var(--muted); font-style:italic;">${e.orderProjUsd? fmtUsd(e.orderProjUsd):'-'}</td></tr>`;
+    }).join('');
 
     document.getElementById('monthPicker').addEventListener('change', (ev)=>{
       renderMonthlyDetail(rollupCache, ev.target.value);
