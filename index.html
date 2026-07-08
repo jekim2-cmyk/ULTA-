@@ -106,6 +106,28 @@
 </div>
 
 <div class="section">
+  <h2>주간 매출 추이 (Sell-through)</h2>
+  <div class="desc" id="weeklyDesc">불러오는 중...</div>
+
+  <div class="kpis" id="weeklyKpis" style="display:none; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); margin-bottom:14px;">
+    <div class="kpi"><div class="label">전주 대비 (WoW)</div><div class="value" id="wowValue">—</div><div class="sub" id="wowSub">-</div></div>
+    <div class="kpi"><div class="label">채널 비중 (최근 4주)</div><div class="value" id="channelMixValue">—</div><div class="sub" id="channelMixSub">-</div></div>
+    <div class="kpi"><div class="label">이번 달 COP 달성률</div><div class="value" id="weeklyCopValue">—</div><div class="sub" id="weeklyCopSub">-</div></div>
+  </div>
+
+  <div class="legend" id="weeklyLegend" style="display:none;">
+    <span><span class="dot blue"></span>오프라인(BM)</span>
+    <span><span class="dot orange"></span>온라인(COM)</span>
+  </div>
+  <div style="position:relative; width:100%; height:220px; margin-bottom:8px;" id="weeklyChartWrap">
+    <canvas id="weeklyChart" role="img" aria-label="주간 매출 추이 차트"></canvas>
+  </div>
+  <p style="font-size:11px; color:var(--muted); margin-top:10px; line-height:1.6;">
+    이 섹션은 한 달 안에서의 판매 흐름(채널 비중, 전주 대비 증감, 프로모션 효과나 이상 신호 조기 파악용)을 보기 위한 보조 지표입니다. 월별 COP 달성 여부의 공식 기준은 위 &lsquo;월별 종합 요약&rsquo;입니다.
+  </p>
+</div>
+
+<div class="section">
   <h2>매장별 매출 순위 <span style="font-size:11px;color:var(--muted);font-weight:400;">(Store-Sales 원본 파일이 있는 주차만 집계)</span></h2>
   <div class="desc" id="storeRankDesc">불러오는 중...</div>
   <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
@@ -560,6 +582,123 @@ function initFinancials(finData, qtdYtd){
   }
 }
 
+let weeklyChartInstance = null;
+const WEEKLY_CHART_MAX_WEEKS = 20;
+const WEEKLY_MIX_WEEKS = 4;
+
+function renderWeeklyKpis(weeks, rollup){
+  const kpis = document.getElementById('weeklyKpis');
+  if (!weeks.length){ kpis.style.display = 'none'; return; }
+  kpis.style.display = 'grid';
+
+  const wowValueEl = document.getElementById('wowValue');
+  const wowSubEl = document.getElementById('wowSub');
+  const withTotal = weeks.filter(w => w.totalSales != null);
+  if (withTotal.length >= 2){
+    const last = withTotal[withTotal.length-1];
+    const prev = withTotal[withTotal.length-2];
+    if (prev.totalSales){
+      const wow = (last.totalSales - prev.totalSales) / prev.totalSales * 100;
+      wowValueEl.textContent = pctStr(wow);
+      wowValueEl.style.color = wow >= 0 ? 'var(--good)' : 'var(--bad)';
+      wowSubEl.textContent = `${last.weekEndDate} 기준 (전주 ${prev.weekEndDate})`;
+    } else {
+      wowValueEl.textContent = '—'; wowValueEl.style.color = '';
+      wowSubEl.textContent = '전주 매출 데이터 없음';
+    }
+  } else {
+    wowValueEl.textContent = '—'; wowValueEl.style.color = '';
+    wowSubEl.textContent = '비교할 이전 주 데이터 없음';
+  }
+
+  const mixValueEl = document.getElementById('channelMixValue');
+  const mixSubEl = document.getElementById('channelMixSub');
+  const recentMix = weeks.slice(-WEEKLY_MIX_WEEKS);
+  const bmSum = recentMix.reduce((s,w)=> s + (w.bmSales||0), 0);
+  const comSum = recentMix.reduce((s,w)=> s + (w.comSales||0), 0);
+  const mixTotal = bmSum + comSum;
+  if (mixTotal > 0){
+    const bmPct = Math.round(bmSum/mixTotal*1000)/10;
+    const comPct = Math.round(comSum/mixTotal*1000)/10;
+    mixValueEl.textContent = `BM ${bmPct}% · COM ${comPct}%`;
+    mixSubEl.textContent = `최근 ${recentMix.length}주 합계 기준`;
+  } else {
+    mixValueEl.textContent = '—';
+    mixSubEl.textContent = '채널별 매출 데이터 없음';
+  }
+
+  const copValueEl = document.getElementById('weeklyCopValue');
+  const copSubEl = document.getElementById('weeklyCopSub');
+  const withTarget = (rollup || []).filter(e => e.sellInTargetKrw);
+  const latestTargetMonth = withTarget.length ? withTarget[withTarget.length-1] : null;
+  if (latestTargetMonth && latestTargetMonth.sellInActualKrw != null){
+    const pct = latestTargetMonth.sellInActualKrw / latestTargetMonth.sellInTargetKrw * 100;
+    const c = achColor(pct, 'goal');
+    copValueEl.textContent = pctStr(pct);
+    copValueEl.style.color = c.fg;
+    copSubEl.textContent = `${latestTargetMonth.label} 기준`;
+  } else if (latestTargetMonth){
+    copValueEl.textContent = '진행중';
+    copValueEl.style.color = 'var(--muted)';
+    copSubEl.textContent = `${latestTargetMonth.label} COP (실적 반영 대기중)`;
+  } else {
+    copValueEl.textContent = '—';
+    copValueEl.style.color = '';
+    copSubEl.textContent = 'COP 데이터 없음';
+  }
+}
+
+function renderWeeklyChart(weekly, rollup){
+  const wrap = document.getElementById('weeklyChartWrap');
+  const desc = document.getElementById('weeklyDesc');
+  const legend = document.getElementById('weeklyLegend');
+  const weeks = Object.values(weekly || {}).sort((a,b)=> a.weekEndDate < b.weekEndDate ? -1 : 1);
+
+  if (!weeks.length){
+    if (weeklyChartInstance){ weeklyChartInstance.destroy(); weeklyChartInstance = null; }
+    wrap.style.display = 'none';
+    desc.textContent = '데이터가 없습니다';
+    legend.style.display = 'none';
+    renderWeeklyKpis(weeks, rollup);
+    return;
+  }
+
+  renderWeeklyKpis(weeks, rollup);
+
+  const recent = weeks.slice(-WEEKLY_CHART_MAX_WEEKS);
+  wrap.style.display = 'block';
+  legend.style.display = 'flex';
+  desc.textContent = `최근 ${recent.length}주 (${recent[0].weekEndDate} ~ ${recent[recent.length-1].weekEndDate}) 기준, 주 단위 매출 흐름`;
+
+  const labels = recent.map(w=> w.weekEndDate.slice(5));
+  const bm = recent.map(w=> w.bmSales!=null ? w.bmSales : null);
+  const com = recent.map(w=> w.comSales!=null ? w.comSales : null);
+  const datasets = [
+    { label:'오프라인(BM)', data: bm, backgroundColor:'#3a6ea5', stack:'s', borderRadius:3, maxBarThickness:26 },
+    { label:'온라인(COM)', data: com, backgroundColor:'#e8712f', stack:'s', borderRadius:3, maxBarThickness:26 },
+  ];
+
+  if (!weeklyChartInstance){
+    const ctx = document.getElementById('weeklyChart');
+    weeklyChartInstance = new Chart(ctx, {
+      type: 'bar',
+      data: { labels, datasets },
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label:function(c){ return c.dataset.label + ': ' + (c.raw==null?'-':fmtUsd(c.raw)); } } } },
+        scales:{
+          x:{ stacked:true, grid:{ display:false }, ticks:{ font:{size:10.5} } },
+          y:{ stacked:true, grid:{ color:'#eef1f6' }, ticks:{ font:{size:11}, callback:function(v){ return '$' + (v/1000) + 'k'; } } }
+        }
+      }
+    });
+  } else {
+    weeklyChartInstance.data.labels = labels;
+    weeklyChartInstance.data.datasets = datasets;
+    weeklyChartInstance.update();
+  }
+}
+
 function renderCategoryChart(marketing){
   const el = document.getElementById('categoryChart');
   if (!marketing || !marketing.categories || !marketing.categories.length){
@@ -605,6 +744,7 @@ async function init(){
     if (rollup.length === 0){
       document.getElementById('monthlyDesc').textContent = '데이터가 없습니다';
       document.querySelector('#monthlyTable tbody').innerHTML = '<tr><td colspan="6" class="empty-hint">데이터 없음</td></tr>';
+      renderWeeklyChart(weekly, rollup);
       renderCategoryChart(marketing);
       initStoreRanking(storeRanking);
       initSkuOos(skuSales, skuOos);
@@ -621,6 +761,7 @@ async function init(){
 
     renderMonthlyDetail(rollup, selectedKey);
     renderMonthlyChart(rollup, selectedKey);
+    renderWeeklyChart(weekly, rollup);
     renderCategoryChart(marketing);
     initStoreRanking(storeRanking);
     initSkuOos(skuSales, skuOos);
