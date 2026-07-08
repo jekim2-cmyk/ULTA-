@@ -146,7 +146,7 @@
 </div>
 
 <div class="section">
-  <h2>재무 지표 (CFO 뷰)</h2>
+  <h2>재무 지표</h2>
   <div class="desc" id="finDesc">불러오는 중...</div>
   <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
     <label for="finMonthPicker" style="font-size:12.5px; color:var(--muted);">조회 월</label>
@@ -510,6 +510,7 @@ function initSkuOos(skuData, oosData){
     renderSkuMonth(skuData, oosData, ev.target.value);
   });
 }
+
 
 function renderFinMonth(finData, key){
   const m = (finData && finData.byMonth && finData.byMonth[key]) || null;
