@@ -109,15 +109,22 @@
   <h2>주간 매출 추이 (Sell-through)</h2>
   <div class="desc" id="weeklyDesc">불러오는 중...</div>
 
-  <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
-    <label for="weeklyMonthPicker" style="font-size:12.5px; color:var(--muted);">조회 월</label>
-    <select id="weeklyMonthPicker"></select>
+  <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px; flex-wrap:wrap;">
+    <label for="weeklyPeriodType" style="font-size:12.5px; color:var(--muted);">기간 단위</label>
+    <select id="weeklyPeriodType">
+      <option value="month">월</option>
+      <option value="quarter">분기</option>
+      <option value="half">반기</option>
+      <option value="year">년</option>
+    </select>
+    <label for="weeklyPeriodPicker" style="font-size:12.5px; color:var(--muted);">조회 기간</label>
+    <select id="weeklyPeriodPicker"></select>
   </div>
 
   <div class="kpis" id="weeklyKpis" style="display:none; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); margin-bottom:14px;">
     <div class="kpi"><div class="label">전주 대비 (WoW)</div><div class="value" id="wowValue">—</div><div class="sub" id="wowSub">-</div></div>
-    <div class="kpi"><div class="label">채널 비중 (최근 4주)</div><div class="value" id="channelMixValue">—</div><div class="sub" id="channelMixSub">-</div></div>
-    <div class="kpi"><div class="label">이번 달 COP 달성률</div><div class="value" id="weeklyCopValue">—</div><div class="sub" id="weeklyCopSub">-</div></div>
+    <div class="kpi"><div class="label">채널 비중</div><div class="value" id="channelMixValue">—</div><div class="sub" id="channelMixSub">-</div></div>
+    <div class="kpi"><div class="label">COP 달성률</div><div class="value" id="weeklyCopValue">—</div><div class="sub" id="weeklyCopSub">-</div></div>
   </div>
 
   <div class="legend" id="weeklyLegend" style="display:none;">
@@ -128,7 +135,7 @@
     <canvas id="weeklyChart" role="img" aria-label="주간 매출 추이 차트"></canvas>
   </div>
   <p style="font-size:11px; color:var(--muted); margin-top:10px; line-height:1.6;">
-    이 섹션은 한 달 안에서의 판매 흐름(채널 비중, 전주 대비 증감, 프로모션 효과나 이상 신호 조기 파악용)을 보기 위한 보조 지표입니다. 월별 COP 달성 여부의 공식 기준은 위 &lsquo;월별 종합 요약&rsquo;입니다.
+    이 섹션은 월/분기/반기/년 단위로 기간을 골라 그 기간의 판매 흐름(채널 비중, 전주 대비 증감, 프로모션 효과나 이상 신호 조기 파악용)을 보기 위한 보조 지표입니다. 월별 COP 달성 여부의 공식 기준은 위 &lsquo;월별 종합 요약&rsquo;입니다.
   </p>
 </div>
 
@@ -589,21 +596,70 @@ function initFinancials(finData, qtdYtd){
 
 let weeklyChartInstance = null;
 
-function renderWeeklyKpis(weeks, weeksForMonth, rollup, monthKey){
+function monthsInPeriod(periodType, key){
+  if (periodType === 'month') return [key];
+  if (periodType === 'year'){
+    const year = parseInt(key,10);
+    const months = [];
+    for (let m=1;m<=12;m++) months.push(`${year}-${String(m).padStart(2,'0')}`);
+    return months;
+  }
+  const [yearStr, code] = key.split('-');
+  const year = parseInt(yearStr,10);
+  let startMonth, count;
+  if (periodType === 'quarter'){
+    const q = parseInt(code.slice(1),10);
+    startMonth = (q-1)*3 + 1; count = 3;
+  } else {
+    const h = parseInt(code.slice(1),10);
+    startMonth = h === 1 ? 1 : 7; count = 6;
+  }
+  const months = [];
+  for (let i=0;i<count;i++) months.push(`${year}-${String(startMonth+i).padStart(2,'0')}`);
+  return months;
+}
+
+function periodLabel(periodType, key){
+  if (periodType === 'month') return monthKeyToKoreanLabel(key);
+  if (periodType === 'year') return `${key}년`;
+  const [yearStr, code] = key.split('-');
+  const yy = yearStr.slice(2);
+  if (periodType === 'quarter') return `${yy}년 ${code.slice(1)}분기`;
+  return `${yy}년 ${code === 'H1' ? '상반기' : '하반기'}`;
+}
+
+function derivePeriodKeys(monthKeys, periodType){
+  if (periodType === 'month') return monthKeys;
+  const set = new Set();
+  monthKeys.forEach(mk=>{
+    const [y,m] = mk.split('-');
+    const mi = parseInt(m,10);
+    if (periodType === 'quarter'){
+      set.add(`${y}-Q${Math.floor((mi-1)/3)+1}`);
+    } else if (periodType === 'half'){
+      set.add(`${y}-H${mi<=6?1:2}`);
+    } else if (periodType === 'year'){
+      set.add(y);
+    }
+  });
+  return [...set].sort();
+}
+
+function renderWeeklyKpis(weeks, weeksForPeriod, rollup, periodType, key){
   const kpis = document.getElementById('weeklyKpis');
-  if (!weeksForMonth.length){ kpis.style.display = 'none'; return; }
+  if (!weeksForPeriod.length){ kpis.style.display = 'none'; return; }
   kpis.style.display = 'grid';
 
   const wowValueEl = document.getElementById('wowValue');
   const wowSubEl = document.getElementById('wowSub');
-  const lastOfMonth = weeksForMonth[weeksForMonth.length - 1];
-  const globalIdx = weeks.findIndex(w => w.weekEndDate === lastOfMonth.weekEndDate);
+  const lastOfPeriod = weeksForPeriod[weeksForPeriod.length - 1];
+  const globalIdx = weeks.findIndex(w => w.weekEndDate === lastOfPeriod.weekEndDate);
   const prevWeek = globalIdx > 0 ? weeks[globalIdx - 1] : null;
-  if (lastOfMonth.totalSales != null && prevWeek && prevWeek.totalSales){
-    const wow = (lastOfMonth.totalSales - prevWeek.totalSales) / prevWeek.totalSales * 100;
+  if (lastOfPeriod.totalSales != null && prevWeek && prevWeek.totalSales){
+    const wow = (lastOfPeriod.totalSales - prevWeek.totalSales) / prevWeek.totalSales * 100;
     wowValueEl.textContent = pctStr(wow);
     wowValueEl.style.color = wow >= 0 ? 'var(--good)' : 'var(--bad)';
-    wowSubEl.textContent = `${lastOfMonth.weekEndDate} 기준 (전주 ${prevWeek.weekEndDate})`;
+    wowSubEl.textContent = `${lastOfPeriod.weekEndDate} 기준 (전주 ${prevWeek.weekEndDate})`;
   } else {
     wowValueEl.textContent = '—'; wowValueEl.style.color = '';
     wowSubEl.textContent = '비교할 이전 주 데이터 없음';
@@ -611,14 +667,14 @@ function renderWeeklyKpis(weeks, weeksForMonth, rollup, monthKey){
 
   const mixValueEl = document.getElementById('channelMixValue');
   const mixSubEl = document.getElementById('channelMixSub');
-  const bmSum = weeksForMonth.reduce((s,w)=> s + (w.bmSales||0), 0);
-  const comSum = weeksForMonth.reduce((s,w)=> s + (w.comSales||0), 0);
+  const bmSum = weeksForPeriod.reduce((s,w)=> s + (w.bmSales||0), 0);
+  const comSum = weeksForPeriod.reduce((s,w)=> s + (w.comSales||0), 0);
   const mixTotal = bmSum + comSum;
   if (mixTotal > 0){
     const bmPct = Math.round(bmSum/mixTotal*1000)/10;
     const comPct = Math.round(comSum/mixTotal*1000)/10;
     mixValueEl.textContent = `BM ${bmPct}% · COM ${comPct}%`;
-    mixSubEl.textContent = `이 달 ${weeksForMonth.length}주 합계 기준`;
+    mixSubEl.textContent = `이 기간 ${weeksForPeriod.length}주 합계 기준`;
   } else {
     mixValueEl.textContent = '—';
     mixSubEl.textContent = '채널별 매출 데이터 없음';
@@ -626,17 +682,23 @@ function renderWeeklyKpis(weeks, weeksForMonth, rollup, monthKey){
 
   const copValueEl = document.getElementById('weeklyCopValue');
   const copSubEl = document.getElementById('weeklyCopSub');
-  const monthRollup = (rollup || []).find(e => e.key === monthKey);
-  if (monthRollup && monthRollup.sellInTargetKrw && monthRollup.sellInActualKrw != null){
-    const pct = monthRollup.sellInActualKrw / monthRollup.sellInTargetKrw * 100;
+  const periodMonths = monthsInPeriod(periodType, key);
+  const monthRollups = periodMonths.map(mk => (rollup||[]).find(e=>e.key===mk)).filter(Boolean);
+  const targetSum = monthRollups.reduce((s,e)=> s + (e.sellInTargetKrw||0), 0);
+  const actualSum = monthRollups.reduce((s,e)=> s + (e.sellInActualKrw||0), 0);
+  const hasTarget = monthRollups.some(e=>e.sellInTargetKrw);
+  const hasActual = monthRollups.some(e=>e.sellInActualKrw!=null);
+  const label = periodLabel(periodType, key);
+  if (hasTarget && hasActual && targetSum > 0){
+    const pct = actualSum / targetSum * 100;
     const c = achColor(pct, 'goal');
     copValueEl.textContent = pctStr(pct);
     copValueEl.style.color = c.fg;
-    copSubEl.textContent = `${monthRollup.label} 기준`;
-  } else if (monthRollup && monthRollup.sellInTargetKrw){
+    copSubEl.textContent = `${label} 기준`;
+  } else if (hasTarget){
     copValueEl.textContent = '진행중';
     copValueEl.style.color = 'var(--muted)';
-    copSubEl.textContent = `${monthRollup.label} COP (실적 반영 대기중)`;
+    copSubEl.textContent = `${label} COP (실적 반영 대기중)`;
   } else {
     copValueEl.textContent = '—';
     copValueEl.style.color = '';
@@ -644,11 +706,11 @@ function renderWeeklyKpis(weeks, weeksForMonth, rollup, monthKey){
   }
 }
 
-function renderWeeklyChart(weeksForMonth){
+function renderWeeklyChart(weeksForPeriod){
   const wrap = document.getElementById('weeklyChartWrap');
   const legend = document.getElementById('weeklyLegend');
 
-  if (!weeksForMonth.length){
+  if (!weeksForPeriod.length){
     if (weeklyChartInstance){ weeklyChartInstance.destroy(); weeklyChartInstance = null; }
     wrap.style.display = 'none';
     legend.style.display = 'none';
@@ -658,9 +720,9 @@ function renderWeeklyChart(weeksForMonth){
   wrap.style.display = 'block';
   legend.style.display = 'flex';
 
-  const labels = weeksForMonth.map(w=> w.weekEndDate.slice(5));
-  const bm = weeksForMonth.map(w=> w.bmSales!=null ? w.bmSales : null);
-  const com = weeksForMonth.map(w=> w.comSales!=null ? w.comSales : null);
+  const labels = weeksForPeriod.map(w=> w.weekEndDate.slice(5));
+  const bm = weeksForPeriod.map(w=> w.bmSales!=null ? w.bmSales : null);
+  const com = weeksForPeriod.map(w=> w.comSales!=null ? w.comSales : null);
   const datasets = [
     { label:'오프라인(BM)', data: bm, backgroundColor:'#3a6ea5', stack:'s', borderRadius:3, maxBarThickness:26 },
     { label:'온라인(COM)', data: com, backgroundColor:'#e8712f', stack:'s', borderRadius:3, maxBarThickness:26 },
@@ -687,45 +749,61 @@ function renderWeeklyChart(weeksForMonth){
   }
 }
 
-function renderWeeklyMonth(weeks, rollup, monthKey){
+function renderWeeklyPeriod(weeks, rollup, periodType, key){
   const desc = document.getElementById('weeklyDesc');
-  const weeksForMonth = weeks.filter(w => w.weekEndDate && w.weekEndDate.slice(0,7) === monthKey);
-  if (!weeksForMonth.length){
-    desc.textContent = '이 달의 주간 데이터가 없습니다';
+  const periodMonths = new Set(monthsInPeriod(periodType, key));
+  const weeksForPeriod = weeks.filter(w => w.weekEndDate && periodMonths.has(w.weekEndDate.slice(0,7)));
+  const label = periodLabel(periodType, key);
+  if (!weeksForPeriod.length){
+    desc.textContent = '이 기간의 주간 데이터가 없습니다';
   } else {
-    desc.textContent = `${monthKeyToKoreanLabel(monthKey)} · ${weeksForMonth.length}주 기준 주 단위 매출 흐름`;
+    desc.textContent = `${label} · ${weeksForPeriod.length}주 기준 주 단위 매출 흐름`;
   }
-  renderWeeklyKpis(weeks, weeksForMonth, rollup, monthKey);
-  renderWeeklyChart(weeksForMonth);
+  renderWeeklyKpis(weeks, weeksForPeriod, rollup, periodType, key);
+  renderWeeklyChart(weeksForPeriod);
+}
+
+function populateWeeklyPeriodPicker(monthKeys, periodType, sel){
+  const keys = derivePeriodKeys(monthKeys, periodType);
+  sel.innerHTML = '';
+  keys.forEach(k=>{
+    const opt = document.createElement('option');
+    opt.value = k; opt.textContent = periodLabel(periodType, k);
+    sel.appendChild(opt);
+  });
+  if (keys.length) sel.value = keys[keys.length-1];
+  return keys;
 }
 
 function initWeekly(weekly, rollup){
   const desc = document.getElementById('weeklyDesc');
-  const sel = document.getElementById('weeklyMonthPicker');
+  const typeSel = document.getElementById('weeklyPeriodType');
+  const periodSel = document.getElementById('weeklyPeriodPicker');
   const weeks = Object.values(weekly || {}).filter(w=>w.weekEndDate).sort((a,b)=> a.weekEndDate < b.weekEndDate ? -1 : 1);
-  const keys = [...new Set(weeks.map(w=>w.weekEndDate.slice(0,7)))].sort();
+  const monthKeys = [...new Set(weeks.map(w=>w.weekEndDate.slice(0,7)))].sort();
 
-  if (!keys.length){
+  if (!monthKeys.length){
     desc.textContent = '데이터가 없습니다';
     document.getElementById('weeklyKpis').style.display = 'none';
     document.getElementById('weeklyLegend').style.display = 'none';
     document.getElementById('weeklyChartWrap').style.display = 'none';
-    sel.style.display = 'none';
+    typeSel.style.display = 'none';
+    periodSel.style.display = 'none';
     return;
   }
 
-  sel.style.display = '';
-  sel.innerHTML = '';
-  keys.forEach(k=>{
-    const opt = document.createElement('option');
-    opt.value = k; opt.textContent = monthKeyToKoreanLabel(k);
-    sel.appendChild(opt);
-  });
-  sel.value = keys[keys.length-1];
+  typeSel.style.display = '';
+  periodSel.style.display = '';
+  typeSel.value = 'month';
+  populateWeeklyPeriodPicker(monthKeys, typeSel.value, periodSel);
+  renderWeeklyPeriod(weeks, rollup, typeSel.value, periodSel.value);
 
-  renderWeeklyMonth(weeks, rollup, sel.value);
-  sel.addEventListener('change', (ev)=>{
-    renderWeeklyMonth(weeks, rollup, ev.target.value);
+  typeSel.addEventListener('change', ()=>{
+    populateWeeklyPeriodPicker(monthKeys, typeSel.value, periodSel);
+    renderWeeklyPeriod(weeks, rollup, typeSel.value, periodSel.value);
+  });
+  periodSel.addEventListener('change', (ev)=>{
+    renderWeeklyPeriod(weeks, rollup, typeSel.value, ev.target.value);
   });
 }
 
