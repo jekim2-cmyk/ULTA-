@@ -1,0 +1,8 @@
+{
+  "name": "ulta-dashboard",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@vercel/functions": "^1.5.0"
+  }
+}

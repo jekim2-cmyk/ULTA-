@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>로그인 - Celimax ULTA 대시보드</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  :root { --navy:#1F3B57; --accent:#2E75B6; --muted:#6B7280; --bg:#F5F7FA; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: var(--bg); font-family: "Malgun Gothic", -apple-system, sans-serif;
+  }
+  .card {
+    background: #fff; border-radius: 12px; padding: 40px 36px; width: 360px; max-width: 90vw;
+    box-shadow: 0 10px 30px rgba(31,59,87,0.12); text-align: center;
+  }
+  h1 { font-size: 19px; color: var(--navy); margin: 0 0 8px; }
+  p.sub { color: var(--muted); font-size: 13px; margin: 0 0 26px; line-height: 1.6; }
+  .g_id_signin_wrap { display: flex; justify-content: center; margin-bottom: 14px; }
+  #status { font-size: 12.5px; margin-top: 14px; min-height: 18px; }
+  #status.error { color: #C0392B; }
+  #status.loading { color: var(--muted); }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Celimax ULTA 대시보드</h1>
+    <p class="sub">회사 구글 계정(@celimax.co.kr)으로 로그인해주세요.</p>
+    <div id="g_id_onload"
+         data-callback="handleCredentialResponse"
+         data-auto_prompt="false">
+    </div>
+    <div class="g_id_signin_wrap">
+      <div class="g_id_signin" data-type="standard" data-shape="rectangular" data-theme="outline" data-size="large" data-logo_alignment="left"></div>
+    </div>
+    <div id="status"></div>
+  </div>
+
+  <script>
+    const statusEl = document.getElementById('status');
+
+    async function init() {
+      statusEl.textContent = '초기화 중...';
+      statusEl.className = 'loading';
+      try {
+        const res = await fetch('/api/config');
+        const cfg = await res.json();
+        if (!cfg.clientId) {
+          statusEl.textContent = '서버 설정이 완료되지 않았습니다 (GOOGLE_CLIENT_ID 미설정). 관리자에게 문의하세요.';
+          statusEl.className = 'error';
+          return;
+        }
+        document.getElementById('g_id_onload').setAttribute('data-client_id', cfg.clientId);
+        statusEl.textContent = '';
+        // GIS 스크립트가 이미 로드되어 있으면 수동으로 초기화/렌더링
+        if (window.google && google.accounts && google.accounts.id) {
+          google.accounts.id.initialize({ client_id: cfg.clientId, callback: handleCredentialResponse });
+          google.accounts.id.renderButton(document.querySelector('.g_id_signin'), {
+            type: 'standard', shape: 'rectangular', theme: 'outline', size: 'large', logo_alignment: 'left'
+          });
+        }
+      } catch (e) {
+        statusEl.textContent = '설정을 불러오지 못했습니다. 새로고침 해주세요.';
+        statusEl.className = 'error';
+      }
+    }
+
+    async function handleCredentialResponse(response) {
+      statusEl.textContent = '로그인 확인 중...';
+      statusEl.className = 'loading';
+      try {
+        const res = await fetch('/api/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ credential: response.credential }),
+        });
+        if (res.ok) {
+          const params = new URLSearchParams(window.location.search);
+          const next = params.get('next') || '/';
+          window.location.href = next;
+        } else {
+          const err = await res.json().catch(() => ({}));
+          statusEl.textContent = err.message || '접근 권한이 없습니다.';
+          statusEl.className = 'error';
+        }
+      } catch (e) {
+        statusEl.textContent = '로그인 처리 중 오류가 발생했습니다.';
+        statusEl.className = 'error';
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
