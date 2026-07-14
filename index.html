@@ -144,8 +144,8 @@
   </div>
 
   <table id="monthlyTable" style="margin-top:14px;">
-    <thead><tr><th>월</th><th>Sell-through</th><th>Sell-in</th><th>COP</th><th>COP 월 달성률</th><th>COOP</th><th style="color:var(--muted); font-weight:400;">ULTA 발주예측 (참고)</th></tr></thead>
-    <tbody><tr><td colspan="7" class="empty-hint">불러오는 중...</td></tr></tbody>
+    <thead><tr><th>월</th><th>Sell-through</th><th>Sell-in (USD)</th><th>Sell-in (KRW)</th><th>COP (KRW)</th><th>COP 월 달성률</th><th>COOP</th><th style="color:var(--muted); font-weight:400;">ULTA 발주예측 (참고)</th></tr></thead>
+    <tbody><tr><td colspan="8" class="empty-hint">불러오는 중...</td></tr></tbody>
   </table>
 </div>
 
@@ -313,10 +313,16 @@
 
     <div class="upload-card">
       <h3>Sell-in / COP 목표 수동 입력</h3>
-      <div class="desc">해당 월의 Sell-in 실적(USD/KRW)과 COP(목표) 금액(KRW)을 직접 입력합니다. 하나만 입력해도 됩니다.</div>
+      <div class="desc">해당 월의 Sell-in 실적(USD/KRW)과 COP(목표) 금액(KRW)을 직접 입력합니다. 하나만 입력해도 됩니다. USD/KRW 중 하나를 입력하면 환율 1,480원 기준으로 나머지가 자동으로 채워집니다 (필요하면 직접 수정 가능).</div>
       <div class="form-row">
         <label for="kpiMonthInput">대상 월</label>
         <input type="text" id="kpiMonthInput" placeholder="예: 2026-06" style="width:120px;">
+      </div>
+      <div id="kpiOverwriteWarning" class="status-msg error" style="display:none; background:#fdeeea; border-radius:8px; padding:10px 12px; margin-bottom:10px;">
+        <span id="kpiOverwriteText"></span>
+        <label style="display:flex; align-items:center; gap:6px; margin-top:8px; cursor:pointer; font-weight:600;">
+          <input type="checkbox" id="kpiOverwriteConfirm"> 기존 데이터를 덮어쓰는 것에 동의합니다.
+        </label>
       </div>
       <div class="form-row">
         <label for="kpiUsdInput">Sell-in (USD)</label>
@@ -1087,6 +1093,56 @@ async function uploadRawFile(fileInputEl, type, statusEl, buttonEl){
   }
 }
 
+const KPI_FX_RATE = 1480;
+
+function wireKpiFxAutoFill(){
+  const usdInput = document.getElementById('kpiUsdInput');
+  const krwInput = document.getElementById('kpiKrwInput');
+  usdInput.addEventListener('input', ()=>{
+    const v = parseFloat(usdInput.value);
+    if (!isNaN(v)) krwInput.value = Math.round(v * KPI_FX_RATE * 10) / 10;
+  });
+  krwInput.addEventListener('input', ()=>{
+    const v = parseFloat(krwInput.value);
+    if (!isNaN(v)) usdInput.value = Math.round(v / KPI_FX_RATE * 100) / 100;
+  });
+}
+
+let kpiExistingDataCache = null;
+
+async function checkExistingKpiMonth(){
+  const monthKey = document.getElementById('kpiMonthInput').value.trim();
+  const warningEl = document.getElementById('kpiOverwriteWarning');
+  const warningTextEl = document.getElementById('kpiOverwriteText');
+  const confirmBox = document.getElementById('kpiOverwriteConfirm');
+  if (!/^\d{4}-\d{2}$/.test(monthKey)){
+    warningEl.style.display = 'none';
+    return;
+  }
+  try {
+    if (!kpiExistingDataCache){
+      const res = await fetch('./data.json', { cache: 'no-store' });
+      kpiExistingDataCache = await res.json();
+    }
+    const snapshot = kpiExistingDataCache;
+    const kpiMonthly = snapshot.kpiMonthly || [];
+    const existingKpi = kpiMonthly.find(m => parseKoreanMonthLabel(m.month) === monthKey);
+    const existingTarget = snapshot.target && snapshot.target.byMonth ? snapshot.target.byMonth[monthKey] : null;
+    if (existingKpi || existingTarget){
+      const parts = [];
+      if (existingKpi) parts.push(`Sell-in USD $${existingKpi.usdSales ?? '-'} / KRW ₩${existingKpi.krwSales ?? '-'}`);
+      if (existingTarget) parts.push(`COP 목표 ₩${existingTarget}`);
+      warningTextEl.textContent = `${monthKey}에는 이미 입력된 데이터가 있습니다 (${parts.join(', ')}). 저장하면 기존 값을 덮어씁니다.`;
+      warningEl.style.display = 'block';
+      confirmBox.checked = false;
+    } else {
+      warningEl.style.display = 'none';
+    }
+  } catch (e){
+    warningEl.style.display = 'none';
+  }
+}
+
 async function saveKpi(statusEl, buttonEl){
   const monthKey = document.getElementById('kpiMonthInput').value.trim();
   const usdSales = document.getElementById('kpiUsdInput').value.trim();
@@ -1094,6 +1150,12 @@ async function saveKpi(statusEl, buttonEl){
   const copTargetKrw = document.getElementById('kpiCopInput').value.trim();
   if (!/^\d{4}-\d{2}$/.test(monthKey)){
     setStatus(statusEl, '대상 월은 "YYYY-MM" 형식으로 입력해주세요 (예: 2026-06)', 'error');
+    return;
+  }
+  const warningEl = document.getElementById('kpiOverwriteWarning');
+  const confirmBox = document.getElementById('kpiOverwriteConfirm');
+  if (warningEl.style.display !== 'none' && !confirmBox.checked){
+    setStatus(statusEl, '기존 데이터를 덮어쓰는 것에 동의한다는 체크박스를 선택해주세요.', 'error');
     return;
   }
   buttonEl.disabled = true;
@@ -1111,6 +1173,9 @@ async function saveKpi(statusEl, buttonEl){
     const data = await res.json().catch(()=>({}));
     if (res.ok && data.ok){
       setStatus(statusEl, '✓ ' + data.message, 'ok');
+      kpiExistingDataCache = null;
+      warningEl.style.display = 'none';
+      confirmBox.checked = false;
     } else {
       setStatus(statusEl, data.message || `저장 실패 (${res.status})`, 'error');
     }
@@ -1147,6 +1212,9 @@ async function initDataPage(){
     document.getElementById('kpiSaveBtn').addEventListener('click', ()=>{
       saveKpi(document.getElementById('kpiStatus'), document.getElementById('kpiSaveBtn'));
     });
+    wireKpiFxAutoFill();
+    document.getElementById('kpiMonthInput').addEventListener('change', checkExistingKpiMonth);
+    document.getElementById('kpiMonthInput').addEventListener('blur', checkExistingKpiMonth);
   } catch (e){
     accessMsg.textContent = '권한 확인 중 오류가 발생했습니다: ' + e.message;
   }
@@ -1180,7 +1248,7 @@ async function init(){
 
     if (rollup.length === 0){
       document.getElementById('monthlyDesc').textContent = '데이터가 없습니다';
-      document.querySelector('#monthlyTable tbody').innerHTML = '<tr><td colspan="7" class="empty-hint">데이터 없음</td></tr>';
+      document.querySelector('#monthlyTable tbody').innerHTML = '<tr><td colspan="8" class="empty-hint">데이터 없음</td></tr>';
       initWeekly(weekly, rollup);
       renderCategoryChart(marketing);
       initStoreRanking(storeRanking);
@@ -1213,7 +1281,7 @@ async function init(){
         const c = achColor(pct, 'goal');
         achCell = `<span style="color:${c.fg}; font-weight:600;">${pctStr(pct)}</span>`;
       }
-      return `<tr><td>${e.label}</td><td>${e.hasSellThrough? fmtUsd(e.sellThroughUsd):'-'}</td><td>${e.sellInActualUsd!=null? fmtUsd(e.sellInActualUsd):'-'}</td><td>${e.sellInTargetKrw? fmtKrw(e.sellInTargetKrw):'-'}</td><td>${achCell}</td><td>${e.hasMkt? fmtUsd(e.mktActUsd):'-'}</td><td style="color:var(--muted); font-style:italic;">${e.orderProjUsd? fmtUsd(e.orderProjUsd):'-'}</td></tr>`;
+      return `<tr><td>${e.label}</td><td>${e.hasSellThrough? fmtUsd(e.sellThroughUsd):'-'}</td><td>${e.sellInActualUsd!=null? fmtUsd(e.sellInActualUsd):'-'}</td><td>${e.sellInActualKrw!=null? fmtKrw(e.sellInActualKrw):'-'}</td><td>${e.sellInTargetKrw? fmtKrw(e.sellInTargetKrw):'-'}</td><td>${achCell}</td><td>${e.hasMkt? fmtUsd(e.mktActUsd):'-'}</td><td style="color:var(--muted); font-style:italic;">${e.orderProjUsd? fmtUsd(e.orderProjUsd):'-'}</td></tr>`;
     }).join('');
 
     document.getElementById('monthPicker').addEventListener('change', (ev)=>{
