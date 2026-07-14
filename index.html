@@ -41,15 +41,44 @@
   .dot{width:9px;height:9px;border-radius:3px;display:inline-block;}
   .dot.orange{background:var(--orange);}
   .dot.blue{background:var(--blue);}
+  .app{display:flex;align-items:flex-start;min-height:100vh;}
+  .sidebar{width:190px;flex-shrink:0;background:#fff;border-right:1px solid var(--border);padding:22px 14px;position:sticky;top:0;height:100vh;overflow-y:auto;box-sizing:border-box;}
+  .sidebar-brand{font-size:13.5px;font-weight:700;color:var(--navy);margin:0 8px 18px;line-height:1.4;}
+  .sidebar-nav{display:flex;flex-direction:column;gap:4px;}
+  .nav-item{display:block;width:100%;text-align:left;padding:10px 12px;border:none;background:none;border-radius:8px;font-size:13px;color:var(--text);cursor:pointer;font-family:inherit;}
+  .nav-item:hover{background:#f4f6fa;}
+  .nav-item.active{background:var(--navy);color:#fff;}
+  .content{flex:1;min-width:0;}
+  .page{display:none;}
+  .page.active{display:block;}
+  @media (max-width: 720px){
+    .app{flex-direction:column;}
+    .sidebar{width:100%;height:auto;position:static;border-right:none;border-bottom:1px solid var(--border);padding:14px;}
+    .sidebar-nav{flex-direction:row;flex-wrap:wrap;}
+  }
 </style>
 </head>
 <body>
+<div class="app">
+<aside class="sidebar">
+  <div class="sidebar-brand">Celimax × ULTA<br>팀 대시보드</div>
+  <nav class="sidebar-nav">
+    <button class="nav-item active" data-page="overview">📊 개요</button>
+    <button class="nav-item" data-page="store">🏬 매장별</button>
+    <button class="nav-item" data-page="product">📦 상품별</button>
+    <button class="nav-item" data-page="financials">💰 재무 지표</button>
+    <button class="nav-item" data-page="coop">📣 COOP</button>
+  </nav>
+</aside>
+<main class="content">
 <div class="wrap">
 
 <header>
   <h1>Celimax × ULTA 팀 대시보드</h1>
   <p id="headerSub">데이터를 불러오는 중...</p>
 </header>
+
+<div class="page active" data-page="overview">
 
 <div class="section">
   <h2>월별 종합 요약</h2>
@@ -117,9 +146,15 @@
       <option value="quarter">분기</option>
       <option value="half">반기</option>
       <option value="year">년</option>
+      <option value="custom">직접 선택</option>
     </select>
     <label for="weeklyPeriodPicker" style="font-size:12.5px; color:var(--muted);">조회 기간</label>
     <select id="weeklyPeriodPicker"></select>
+    <span id="weeklyCustomWrap" style="display:none; align-items:center; gap:8px;">
+      <input type="date" id="weeklyFromDate" style="font-size:13px; padding:6px 8px; border-radius:8px; border:1px solid var(--border);">
+      <span style="color:var(--muted);">~</span>
+      <input type="date" id="weeklyToDate" style="font-size:13px; padding:6px 8px; border-radius:8px; border:1px solid var(--border);">
+    </span>
   </div>
 
   <div class="kpis" id="weeklyKpis" style="display:none; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); margin-bottom:14px;">
@@ -140,6 +175,10 @@
   </p>
 </div>
 
+</div>
+
+<div class="page" data-page="store">
+
 <div class="section">
   <h2>매장별 매출 순위 <span style="font-size:11px;color:var(--muted);font-weight:400;">(Store-Sales 원본 파일이 있는 주차만 집계)</span></h2>
   <div class="desc" id="storeRankDesc">불러오는 중...</div>
@@ -152,6 +191,10 @@
     <tbody><tr><td colspan="5" class="empty-hint">불러오는 중...</td></tr></tbody>
   </table>
 </div>
+
+</div>
+
+<div class="page" data-page="product">
 
 <div class="section">
   <h2>SKU별 판매 비중 & 품절(OOS) 현황</h2>
@@ -178,7 +221,18 @@
     <thead><tr><th>SKU</th><th>평균 OOS%</th><th>최고 OOS%</th><th>추적 주차 수</th></tr></thead>
     <tbody><tr><td colspan="4" class="empty-hint">불러오는 중...</td></tr></tbody>
   </table>
+
+  <p style="font-size:11.5px; font-weight:700; color:var(--navy); margin:22px 0 6px;">전주 대비 SKU 판매 증감 (WoW)</p>
+  <div class="desc" id="skuWowDesc" style="margin-bottom:8px;">불러오는 중...</div>
+  <table id="skuWowTable">
+    <thead><tr><th>SKU</th><th>이번 주</th><th>전주</th><th>증감</th><th>증감률</th></tr></thead>
+    <tbody><tr><td colspan="5" class="empty-hint">불러오는 중...</td></tr></tbody>
+  </table>
 </div>
+
+</div>
+
+<div class="page" data-page="financials">
 
 <div class="section">
   <h2>재무 지표</h2>
@@ -206,13 +260,21 @@
   </p>
 </div>
 
+</div>
+
+<div class="page" data-page="coop">
+
 <div class="section">
   <h2>카테고리별 누적 COOP <span style="font-size:11px;color:var(--muted);font-weight:400;">(전체 기간)</span></h2>
   <div id="categoryChart"><div class="empty-hint">불러오는 중...</div></div>
 </div>
 
+</div>
+
 <div class="footer-note" id="footerNote">이 페이지는 data.json 파일의 내용을 보여줍니다. 데이터 갱신은 담당자가 data.json 파일을 교체(재배포)해야 반영됩니다.</div>
 
+</div>
+</main>
 </div>
 
 <script>
@@ -560,6 +622,42 @@ function initSkuOos(skuData, oosData){
 }
 
 
+function renderSkuWow(skuWeekly){
+  const desc = document.getElementById('skuWowDesc');
+  const tbody = document.querySelector('#skuWowTable tbody');
+  const byWeek = (skuWeekly && skuWeekly.byWeek) || {};
+  const weekKeys = Object.keys(byWeek).sort();
+  if (weekKeys.length < 2){
+    desc.textContent = weekKeys.length ? '비교할 전주 데이터가 아직 없습니다 (2주 이상 데이터 필요)' : '아직 주간 SKU 데이터가 없습니다';
+    tbody.innerHTML = '<tr><td colspan="5" class="empty-hint">데이터 없음</td></tr>';
+    return;
+  }
+  const curKey = weekKeys[weekKeys.length - 1];
+  const prevKey = weekKeys[weekKeys.length - 2];
+  const curMap = {};
+  (byWeek[curKey].skus || []).forEach(s => { curMap[s.desc] = s.sales; });
+  const prevMap = {};
+  (byWeek[prevKey].skus || []).forEach(s => { prevMap[s.desc] = s.sales; });
+  const allDescs = new Set([...Object.keys(curMap), ...Object.keys(prevMap)]);
+
+  const rows = [...allDescs].map(d=>{
+    const cur = curMap[d] != null ? curMap[d] : 0;
+    const prev = prevMap[d] != null ? prevMap[d] : 0;
+    const diff = cur - prev;
+    const pct = prev ? (diff / prev * 100) : (cur > 0 ? null : 0);
+    return { desc: d, cur, prev, diff, pct };
+  }).sort((a,b) => b.diff - a.diff);
+
+  desc.textContent = `${curKey} 주 vs 전주 ${prevKey} (SKU ${rows.length}개 비교)`;
+
+  tbody.innerHTML = rows.map(r=>{
+    const diffColor = r.diff > 0 ? 'var(--good)' : (r.diff < 0 ? 'var(--bad)' : 'var(--muted)');
+    const diffStr = (r.diff >= 0 ? '+' : '') + fmtUsd(r.diff).replace('$','$');
+    const pctStrVal = r.pct == null ? '신규' : pctStr(r.pct);
+    return `<tr><td>${r.desc}</td><td>${fmtUsd(r.cur)}</td><td>${fmtUsd(r.prev)}</td><td style="color:${diffColor}; font-weight:600;">${diffStr}</td><td style="color:${diffColor};">${pctStrVal}</td></tr>`;
+  }).join('');
+}
+
 function renderFinMonth(finData, key){
   const m = (finData && finData.byMonth && finData.byMonth[key]) || null;
   const desc = document.getElementById('finDesc');
@@ -659,7 +757,7 @@ function derivePeriodKeys(monthKeys, periodType){
   return [...set].sort();
 }
 
-function renderWeeklyKpis(weeks, weeksForPeriod, rollup, periodType, key){
+function renderWeeklyKpis(weeks, weeksForPeriod, rollup, labelText){
   const kpis = document.getElementById('weeklyKpis');
   if (!weeksForPeriod.length){ kpis.style.display = 'none'; return; }
   kpis.style.display = 'grid';
@@ -696,13 +794,13 @@ function renderWeeklyKpis(weeks, weeksForPeriod, rollup, periodType, key){
 
   const copValueEl = document.getElementById('weeklyCopValue');
   const copSubEl = document.getElementById('weeklyCopSub');
-  const periodMonths = monthsInPeriod(periodType, key);
+  const periodMonths = [...new Set(weeksForPeriod.map(w=>w.weekEndDate.slice(0,7)))];
   const monthRollups = periodMonths.map(mk => (rollup||[]).find(e=>e.key===mk)).filter(Boolean);
   const targetSum = monthRollups.reduce((s,e)=> s + (e.sellInTargetKrw||0), 0);
   const actualSum = monthRollups.reduce((s,e)=> s + (e.sellInActualKrw||0), 0);
   const hasTarget = monthRollups.some(e=>e.sellInTargetKrw);
   const hasActual = monthRollups.some(e=>e.sellInActualKrw!=null);
-  const label = periodLabel(periodType, key);
+  const label = labelText;
   if (hasTarget && hasActual && targetSum > 0){
     const pct = actualSum / targetSum * 100;
     const c = achColor(pct, 'goal');
@@ -773,7 +871,26 @@ function renderWeeklyPeriod(weeks, rollup, periodType, key){
   } else {
     desc.textContent = `${label} · ${weeksForPeriod.length}주 기준 주 단위 매출 흐름`;
   }
-  renderWeeklyKpis(weeks, weeksForPeriod, rollup, periodType, key);
+  renderWeeklyKpis(weeks, weeksForPeriod, rollup, label);
+  renderWeeklyChart(weeksForPeriod);
+}
+
+function renderWeeklyCustomRange(weeks, rollup, fromStr, toStr){
+  const desc = document.getElementById('weeklyDesc');
+  if (!fromStr || !toStr){
+    desc.textContent = '시작일과 종료일을 선택해주세요';
+    renderWeeklyKpis(weeks, [], rollup, '');
+    renderWeeklyChart([]);
+    return;
+  }
+  const weeksForPeriod = weeks.filter(w => w.weekEndDate >= fromStr && w.weekEndDate <= toStr);
+  const label = `${fromStr} ~ ${toStr}`;
+  if (!weeksForPeriod.length){
+    desc.textContent = '이 기간의 주간 데이터가 없습니다';
+  } else {
+    desc.textContent = `${label} · ${weeksForPeriod.length}주 기준 주 단위 매출 흐름`;
+  }
+  renderWeeklyKpis(weeks, weeksForPeriod, rollup, label);
   renderWeeklyChart(weeksForPeriod);
 }
 
@@ -793,6 +910,9 @@ function initWeekly(weekly, rollup){
   const desc = document.getElementById('weeklyDesc');
   const typeSel = document.getElementById('weeklyPeriodType');
   const periodSel = document.getElementById('weeklyPeriodPicker');
+  const customWrap = document.getElementById('weeklyCustomWrap');
+  const fromInput = document.getElementById('weeklyFromDate');
+  const toInput = document.getElementById('weeklyToDate');
   const weeks = Object.values(weekly || {}).filter(w=>w.weekEndDate).sort((a,b)=> a.weekEndDate < b.weekEndDate ? -1 : 1);
   const monthKeys = [...new Set(weeks.map(w=>w.weekEndDate.slice(0,7)))].sort();
 
@@ -803,8 +923,12 @@ function initWeekly(weekly, rollup){
     document.getElementById('weeklyChartWrap').style.display = 'none';
     typeSel.style.display = 'none';
     periodSel.style.display = 'none';
+    customWrap.style.display = 'none';
     return;
   }
+
+  fromInput.min = weeks[0].weekEndDate; fromInput.max = weeks[weeks.length-1].weekEndDate;
+  toInput.min = weeks[0].weekEndDate; toInput.max = weeks[weeks.length-1].weekEndDate;
 
   typeSel.style.display = '';
   periodSel.style.display = '';
@@ -813,12 +937,24 @@ function initWeekly(weekly, rollup){
   renderWeeklyPeriod(weeks, rollup, typeSel.value, periodSel.value);
 
   typeSel.addEventListener('change', ()=>{
-    populateWeeklyPeriodPicker(monthKeys, typeSel.value, periodSel);
-    renderWeeklyPeriod(weeks, rollup, typeSel.value, periodSel.value);
+    if (typeSel.value === 'custom'){
+      periodSel.style.display = 'none';
+      customWrap.style.display = 'inline-flex';
+      if (!fromInput.value) fromInput.value = weeks[Math.max(0, weeks.length-4)].weekEndDate;
+      if (!toInput.value) toInput.value = weeks[weeks.length-1].weekEndDate;
+      renderWeeklyCustomRange(weeks, rollup, fromInput.value, toInput.value);
+    } else {
+      customWrap.style.display = 'none';
+      periodSel.style.display = '';
+      populateWeeklyPeriodPicker(monthKeys, typeSel.value, periodSel);
+      renderWeeklyPeriod(weeks, rollup, typeSel.value, periodSel.value);
+    }
   });
   periodSel.addEventListener('change', (ev)=>{
     renderWeeklyPeriod(weeks, rollup, typeSel.value, ev.target.value);
   });
+  fromInput.addEventListener('change', ()=> renderWeeklyCustomRange(weeks, rollup, fromInput.value, toInput.value));
+  toInput.addEventListener('change', ()=> renderWeeklyCustomRange(weeks, rollup, fromInput.value, toInput.value));
 }
 
 function renderCategoryChart(marketing){
@@ -852,6 +988,7 @@ async function init(){
     const storeRanking = snapshot.storeRanking || null;
     const skuSales = snapshot.skuSales || null;
     const skuOos = snapshot.skuOos || null;
+    const skuWeekly = snapshot.skuWeekly || null;
     const financials = snapshot.financials || null;
     const qtdYtd = snapshot.qtdYtd || null;
 
@@ -870,6 +1007,7 @@ async function init(){
       renderCategoryChart(marketing);
       initStoreRanking(storeRanking);
       initSkuOos(skuSales, skuOos);
+      renderSkuWow(skuWeekly);
       initFinancials(financials, qtdYtd);
       return;
     }
@@ -887,6 +1025,7 @@ async function init(){
     renderCategoryChart(marketing);
     initStoreRanking(storeRanking);
     initSkuOos(skuSales, skuOos);
+    renderSkuWow(skuWeekly);
     initFinancials(financials, qtdYtd);
 
     document.querySelector('#monthlyTable tbody').innerHTML = rollup.map(e=>{
@@ -908,6 +1047,17 @@ async function init(){
     console.error('init error', err);
   }
 }
+
+document.querySelectorAll('.nav-item').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+    btn.classList.add('active');
+    const target = document.querySelector('.page[data-page="' + btn.dataset.page + '"]');
+    if (target) target.classList.add('active');
+    window.scrollTo(0, 0);
+  });
+});
 
 init();
 </script>
