@@ -35,6 +35,19 @@
   .bar-val{width:80px;text-align:right;font-weight:600;color:var(--navy);flex-shrink:0;font-size:11.5px;}
   .empty-hint{color:var(--muted);font-size:12px;padding:16px 0;text-align:center;}
   select{font-size:13px;padding:6px 10px;border-radius:8px;border:1px solid var(--border);}
+  input[type="text"], input[type="number"]{font-size:13px;padding:6px 10px;border-radius:8px;border:1px solid var(--border);font-family:inherit;}
+  .btn{font-size:13px;padding:8px 16px;border-radius:8px;border:none;background:var(--navy);color:#fff;cursor:pointer;font-family:inherit;font-weight:600;}
+  .btn:hover{background:var(--navy2);}
+  .btn:disabled{background:#c3c9d4;cursor:not-allowed;}
+  .upload-card{background:#f8f9fb;border-radius:10px;padding:16px 18px;margin-bottom:14px;}
+  .upload-card h3{margin:0 0 6px;font-size:13.5px;color:var(--navy);}
+  .upload-card .desc{margin-bottom:10px;}
+  .form-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;}
+  .form-row label{font-size:12.5px;color:var(--muted);width:130px;flex-shrink:0;}
+  .status-msg{font-size:12px;margin-top:8px;line-height:1.6;}
+  .status-msg.ok{color:var(--good);}
+  .status-msg.error{color:var(--bad);}
+  .status-msg.loading{color:var(--muted);}
   .footer-note{font-size:11px;color:var(--muted);text-align:center;padding:8px 0 0;}
   .legend{display:flex;gap:14px;font-size:11px;color:var(--muted);margin-bottom:10px;}
   .legend span{display:flex;align-items:center;gap:6px;}
@@ -68,6 +81,7 @@
     <button class="nav-item" data-page="product">📦 상품별</button>
     <button class="nav-item" data-page="financials">💰 재무 지표</button>
     <button class="nav-item" data-page="coop">📣 COOP</button>
+    <button class="nav-item" data-page="data">📥 데이터 관리</button>
   </nav>
 </aside>
 <main class="content">
@@ -267,6 +281,60 @@
 <div class="section">
   <h2>카테고리별 누적 COOP <span style="font-size:11px;color:var(--muted);font-weight:400;">(전체 기간)</span></h2>
   <div id="categoryChart"><div class="empty-hint">불러오는 중...</div></div>
+</div>
+
+</div>
+
+<div class="page" data-page="data">
+
+<div class="section">
+  <h2>데이터 관리</h2>
+  <div class="desc">ULTA 원본 리포트 업로드, Sell-in/COP 목표 수동 입력. 담당자 계정만 사용할 수 있습니다.</div>
+
+  <p id="dataAccessMsg" style="font-size:13px; color:var(--muted);">권한 확인 중...</p>
+
+  <div id="dataAdminContent" style="display:none;">
+
+    <div class="upload-card">
+      <h3>매장별 매출 원본 업로드 (Store-Sales)</h3>
+      <div class="desc">파일명 형식: Store-Sales_...-YYYY-MM-DD.xlsx</div>
+      <input type="file" id="storeSalesFile" accept=".xlsx">
+      <button class="btn" id="storeSalesUploadBtn" style="margin-left:8px;">업로드</button>
+      <div class="status-msg" id="storeSalesStatus"></div>
+    </div>
+
+    <div class="upload-card">
+      <h3>SKU별 매출/재고 원본 업로드 (Sales_Inv_Perf)</h3>
+      <div class="desc">파일명 형식: Sales_Inv_Perf...-YYYY-MM-DD.xlsx</div>
+      <input type="file" id="invPerfFile" accept=".xlsx">
+      <button class="btn" id="invPerfUploadBtn" style="margin-left:8px;">업로드</button>
+      <div class="status-msg" id="invPerfStatus"></div>
+    </div>
+
+    <div class="upload-card">
+      <h3>Sell-in / COP 목표 수동 입력</h3>
+      <div class="desc">해당 월의 Sell-in 실적(USD/KRW)과 COP(목표) 금액(KRW)을 직접 입력합니다. 하나만 입력해도 됩니다.</div>
+      <div class="form-row">
+        <label for="kpiMonthInput">대상 월</label>
+        <input type="text" id="kpiMonthInput" placeholder="예: 2026-06" style="width:120px;">
+      </div>
+      <div class="form-row">
+        <label for="kpiUsdInput">Sell-in (USD)</label>
+        <input type="number" id="kpiUsdInput" placeholder="예: 429966.20" style="width:180px;">
+      </div>
+      <div class="form-row">
+        <label for="kpiKrwInput">Sell-in (KRW)</label>
+        <input type="number" id="kpiKrwInput" placeholder="예: 637639874.6" style="width:180px;">
+      </div>
+      <div class="form-row">
+        <label for="kpiCopInput">COP 목표 (KRW)</label>
+        <input type="number" id="kpiCopInput" placeholder="예: 700000000" style="width:180px;">
+      </div>
+      <button class="btn" id="kpiSaveBtn">저장</button>
+      <div class="status-msg" id="kpiStatus"></div>
+    </div>
+
+  </div>
 </div>
 
 </div>
@@ -974,6 +1042,116 @@ function renderCategoryChart(marketing){
   });
 }
 
+function arrayBufferToBase64(buffer){
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i=0;i<bytes.length;i+=chunkSize){
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i+chunkSize));
+  }
+  return btoa(binary);
+}
+
+function setStatus(el, text, kind){
+  el.textContent = text;
+  el.className = 'status-msg' + (kind ? ' ' + kind : '');
+}
+
+async function uploadRawFile(fileInputEl, type, statusEl, buttonEl){
+  const file = fileInputEl.files && fileInputEl.files[0];
+  if (!file){
+    setStatus(statusEl, '먼저 파일을 선택해주세요.', 'error');
+    return;
+  }
+  buttonEl.disabled = true;
+  setStatus(statusEl, `${file.name} 업로드 중...`, 'loading');
+  try {
+    const buf = await file.arrayBuffer();
+    const contentBase64 = arrayBufferToBase64(buf);
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, filename: file.name, contentBase64 }),
+    });
+    const data = await res.json().catch(()=>({}));
+    if (res.ok && data.ok){
+      setStatus(statusEl, '✓ ' + data.message, 'ok');
+      fileInputEl.value = '';
+    } else {
+      setStatus(statusEl, data.message || `업로드 실패 (${res.status})`, 'error');
+    }
+  } catch (e){
+    setStatus(statusEl, '업로드 중 오류: ' + e.message, 'error');
+  } finally {
+    buttonEl.disabled = false;
+  }
+}
+
+async function saveKpi(statusEl, buttonEl){
+  const monthKey = document.getElementById('kpiMonthInput').value.trim();
+  const usdSales = document.getElementById('kpiUsdInput').value.trim();
+  const krwSales = document.getElementById('kpiKrwInput').value.trim();
+  const copTargetKrw = document.getElementById('kpiCopInput').value.trim();
+  if (!/^\d{4}-\d{2}$/.test(monthKey)){
+    setStatus(statusEl, '대상 월은 "YYYY-MM" 형식으로 입력해주세요 (예: 2026-06)', 'error');
+    return;
+  }
+  buttonEl.disabled = true;
+  setStatus(statusEl, '저장 중...', 'loading');
+  try {
+    const body = { monthKey };
+    if (usdSales) body.usdSales = usdSales;
+    if (krwSales) body.krwSales = krwSales;
+    if (copTargetKrw) body.copTargetKrw = copTargetKrw;
+    const res = await fetch('/api/update-kpi', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(()=>({}));
+    if (res.ok && data.ok){
+      setStatus(statusEl, '✓ ' + data.message, 'ok');
+    } else {
+      setStatus(statusEl, data.message || `저장 실패 (${res.status})`, 'error');
+    }
+  } catch (e){
+    setStatus(statusEl, '저장 중 오류: ' + e.message, 'error');
+  } finally {
+    buttonEl.disabled = false;
+  }
+}
+
+async function initDataPage(){
+  const accessMsg = document.getElementById('dataAccessMsg');
+  const content = document.getElementById('dataAdminContent');
+  try {
+    const res = await fetch('/api/me', { cache: 'no-store' });
+    const me = await res.json();
+    if (!me.loggedIn){
+      accessMsg.textContent = '로그인 정보를 확인할 수 없습니다. 새로고침 후 다시 시도해주세요.';
+      return;
+    }
+    if (!me.isAdmin){
+      accessMsg.textContent = `이 기능은 담당자만 사용할 수 있습니다. (현재 계정: ${me.email})`;
+      return;
+    }
+    accessMsg.textContent = `담당자 계정으로 확인되었습니다. (${me.email})`;
+    content.style.display = 'block';
+
+    document.getElementById('storeSalesUploadBtn').addEventListener('click', ()=>{
+      uploadRawFile(document.getElementById('storeSalesFile'), 'store-sales', document.getElementById('storeSalesStatus'), document.getElementById('storeSalesUploadBtn'));
+    });
+    document.getElementById('invPerfUploadBtn').addEventListener('click', ()=>{
+      uploadRawFile(document.getElementById('invPerfFile'), 'sales-inv-perf', document.getElementById('invPerfStatus'), document.getElementById('invPerfUploadBtn'));
+    });
+    document.getElementById('kpiSaveBtn').addEventListener('click', ()=>{
+      saveKpi(document.getElementById('kpiStatus'), document.getElementById('kpiSaveBtn'));
+    });
+  } catch (e){
+    accessMsg.textContent = '권한 확인 중 오류가 발생했습니다: ' + e.message;
+  }
+}
+
 async function init(){
   try {
     const res = await fetch('./data.json', {cache:'no-store'});
@@ -1060,6 +1238,7 @@ document.querySelectorAll('.nav-item').forEach(btn=>{
 });
 
 init();
+initDataPage();
 </script>
 </body>
 </html>
