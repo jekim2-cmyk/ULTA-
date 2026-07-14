@@ -204,6 +204,13 @@
     <thead><tr><th>순위</th><th>매장</th><th>매출</th><th>판매수량</th><th>월 매출 비중</th></tr></thead>
     <tbody><tr><td colspan="5" class="empty-hint">불러오는 중...</td></tr></tbody>
   </table>
+
+  <p style="font-size:11.5px; font-weight:700; color:var(--navy); margin:22px 0 6px;">전주 대비 매장 순위 변동 (WoW)</p>
+  <div class="desc" id="storeWowDesc" style="margin-bottom:8px;">불러오는 중...</div>
+  <table id="storeWowTable">
+    <thead><tr><th>이번 주 순위</th><th>매장</th><th>이번 주 매출</th><th>지난주 순위</th><th>순위 변동</th></tr></thead>
+    <tbody><tr><td colspan="5" class="empty-hint">불러오는 중...</td></tr></tbody>
+  </table>
 </div>
 
 </div>
@@ -627,6 +634,45 @@ function initStoreRanking(storeRanking){
     describe(ev.target.value);
     renderStoreRankTable(byMonth, ev.target.value);
   });
+}
+
+function renderStoreWow(storeWeekly){
+  const desc = document.getElementById('storeWowDesc');
+  const tbody = document.querySelector('#storeWowTable tbody');
+  const byWeek = (storeWeekly && storeWeekly.byWeek) || {};
+  const weekKeys = Object.keys(byWeek).sort();
+  if (weekKeys.length < 2){
+    desc.textContent = weekKeys.length ? '비교할 전주 데이터가 아직 없습니다 (2주 이상 데이터 필요)' : '아직 주간 매장 데이터가 없습니다';
+    tbody.innerHTML = '<tr><td colspan="5" class="empty-hint">데이터 없음</td></tr>';
+    return;
+  }
+  const curKey = weekKeys[weekKeys.length - 1];
+  const prevKey = weekKeys[weekKeys.length - 2];
+  const curStores = byWeek[curKey].topStores || [];
+  const prevMap = {};
+  (byWeek[prevKey].topStores || []).forEach(s => { prevMap[s.storeNum] = s.rank; });
+
+  desc.textContent = `${curKey} 주 vs 전주 ${prevKey} (상위 ${curStores.length}개 매장 기준)`;
+
+  tbody.innerHTML = curStores.map(s=>{
+    const prevRank = prevMap[s.storeNum];
+    let changeCell, prevRankCell;
+    if (prevRank == null){
+      changeCell = `<span style="color:var(--blue); font-weight:600;">신규 진입</span>`;
+      prevRankCell = '-';
+    } else {
+      const change = prevRank - s.rank;
+      prevRankCell = prevRank + '위';
+      if (change > 0){
+        changeCell = `<span style="color:var(--good); font-weight:600;">▲ ${change}위 상승</span>`;
+      } else if (change < 0){
+        changeCell = `<span style="color:var(--bad); font-weight:600;">▼ ${-change}위 하락</span>`;
+      } else {
+        changeCell = `<span style="color:var(--muted);">- 변동 없음</span>`;
+      }
+    }
+    return `<tr><td>${s.rank}</td><td>${s.storeName} <span style="color:var(--muted);">(#${s.storeNum})</span></td><td>${fmtUsd(s.sales)}</td><td>${prevRankCell}</td><td>${changeCell}</td></tr>`;
+  }).join('');
 }
 
 function oosColor(pct){
@@ -1232,6 +1278,7 @@ async function init(){
     const marketing = snapshot.marketing || null;
     const orderProjection = snapshot.orderProjection || null;
     const storeRanking = snapshot.storeRanking || null;
+    const storeWeekly = snapshot.storeWeekly || null;
     const skuSales = snapshot.skuSales || null;
     const skuOos = snapshot.skuOos || null;
     const skuWeekly = snapshot.skuWeekly || null;
@@ -1252,6 +1299,7 @@ async function init(){
       initWeekly(weekly, rollup);
       renderCategoryChart(marketing);
       initStoreRanking(storeRanking);
+      renderStoreWow(storeWeekly);
       initSkuOos(skuSales, skuOos);
       renderSkuWow(skuWeekly);
       initFinancials(financials, qtdYtd);
@@ -1270,6 +1318,7 @@ async function init(){
     initWeekly(weekly, rollup);
     renderCategoryChart(marketing);
     initStoreRanking(storeRanking);
+    renderStoreWow(storeWeekly);
     initSkuOos(skuSales, skuOos);
     renderSkuWow(skuWeekly);
     initFinancials(financials, qtdYtd);

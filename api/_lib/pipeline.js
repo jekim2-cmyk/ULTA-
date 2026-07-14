@@ -222,6 +222,20 @@ export function buildStoreRanking(storeWeeks) {
   return out;
 }
 
+// 주차별 매장 순위 스냅샷 (전주 대비 순위 변동 비교용). 월간 롤업과 달리 주 단위를 그대로 보존.
+export function buildStoreWeekly(storeWeeks) {
+  const byWeek = {};
+  for (const w of storeWeeks) {
+    const sorted = [...w.topStores].sort((a, b) => b.sales - a.sales).slice(0, 20);
+    const ranked = sorted.map((s, i) => ({
+      rank: i + 1, storeNum: s.storeNum, storeName: s.storeName,
+      sales: round2(s.sales), units: s.units,
+    }));
+    byWeek[w.weekEndDate] = { totalSales: w.totalSales, storeCount: w.storeCount, topStores: ranked };
+  }
+  return byWeek;
+}
+
 export function buildSkuSales(invWeeks) {
   const byMonth = {};
   for (const w of invWeeks) {
@@ -367,6 +381,11 @@ export function recomputeSnapshot(existingSnapshot, storeFiles, invFiles, update
       byMonth: buildStoreRanking(storeWeeks),
       uploadedAt: new Date().toISOString(),
       note: 'Store-Sales 원본 xlsx 파일이 업로드된 주차만 집계됨. 일부 월은 부분 데이터일 수 있음.',
+    };
+    snapshot.storeWeekly = {
+      byWeek: buildStoreWeekly(storeWeeks),
+      note: 'Store-Sales 원본 리포트 기준 주간 매장별 매출 순위 (전주 대비 순위 변동 비교용)',
+      uploadedAt: new Date().toISOString(),
     };
   }
 
