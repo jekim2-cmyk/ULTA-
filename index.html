@@ -967,9 +967,10 @@ function renderWeeklyChart(weeksForPeriod){
       data: { labels, datasets },
       options: {
         responsive:true, maintainAspectRatio:false,
-        plugins:{ legend:{ display:false }, tooltip:{ callbacks:{
+        interaction:{ mode:'index', intersect:false },
+        plugins:{ legend:{ display:false }, tooltip:{ mode:'index', intersect:false, callbacks:{
           label:function(c){ return c.dataset.label + ': ' + (c.raw==null?'-':fmtUsd(c.raw)); },
-          footer:function(items){ const total = items.reduce((s,it)=> s + (it.raw||0), 0); return '합계: ' + fmtUsd(total); }
+          footer:function(items){ const total = items.reduce((s,it)=> s + (it.raw||0), 0); return '합계(BM+COM): ' + fmtUsd(total); }
         } } },
         scales:{
           x:{ stacked:true, grid:{ display:false }, ticks:{ font:{size:10.5} } },
