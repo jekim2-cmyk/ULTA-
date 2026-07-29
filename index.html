@@ -103,6 +103,26 @@
     <select id="monthPicker"></select>
   </div>
 
+  <div class="upload-card" style="margin-bottom:16px;">
+    <h3 style="margin-top:0;">여러 달 합계 보기</h3>
+    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+      <label for="monthRangeFrom" style="font-size:12.5px; color:var(--muted);">시작 월</label>
+      <select id="monthRangeFrom"></select>
+      <span style="color:var(--muted);">~</span>
+      <label for="monthRangeTo" style="font-size:12.5px; color:var(--muted);">종료 월</label>
+      <select id="monthRangeTo"></select>
+      <button class="btn" id="monthRangeBtn">합계 보기</button>
+    </div>
+    <div class="kpis" id="monthRangeKpis" style="display:none; grid-template-columns:repeat(auto-fit,minmax(170px,1fr));">
+      <div class="kpi"><div class="label">Sell-through 합계</div><div class="value" id="rangeSellThroughValue">—</div><div class="sub" id="rangeSellThroughSub">-</div></div>
+      <div class="kpi"><div class="label">Sell-in 합계 (USD)</div><div class="value" id="rangeSellInUsdValue">—</div><div class="sub" id="rangeSellInUsdSub">-</div></div>
+      <div class="kpi"><div class="label">Sell-in 합계 (KRW)</div><div class="value" id="rangeSellInKrwValue">—</div><div class="sub" id="rangeSellInKrwSub">-</div></div>
+      <div class="kpi"><div class="label">COP 목표 대비 달성률</div><div class="value" id="rangeCopValue">—</div><div class="sub" id="rangeCopSub">-</div></div>
+      <div class="kpi"><div class="label">COOP 합계</div><div class="value" id="rangeCoopValue">—</div><div class="sub" id="rangeCoopSub">-</div></div>
+    </div>
+    <div id="rangeEmptyHint" class="desc" style="display:none; margin-top:6px;">선택한 기간에 데이터가 없습니다.</div>
+  </div>
+
   <div class="kpis" id="monthlyKpis" style="display:none;">
     <div class="kpi"><div class="label">Sell-through (POS)</div><div class="value">—</div><div class="sub">-</div></div>
     <div class="kpi"><div class="label">Sell-in (내부 출고)</div><div class="value">—</div><div class="sub">-</div></div>
@@ -472,6 +492,86 @@ function populateMonthPicker(rollup){
     if (rollup[i].hasSellThrough || rollup[i].sellInActualUsd!=null){ idx = i; break; }
   }
   if (rollup.length) sel.value = rollup[idx].key;
+}
+
+function populateMonthRangePickers(rollup){
+  const fromSel = document.getElementById('monthRangeFrom');
+  const toSel = document.getElementById('monthRangeTo');
+  fromSel.innerHTML = '';
+  toSel.innerHTML = '';
+  rollup.forEach(e=>{
+    const opt1 = document.createElement('option');
+    opt1.value = e.key; opt1.textContent = e.label;
+    fromSel.appendChild(opt1);
+    const opt2 = document.createElement('option');
+    opt2.value = e.key; opt2.textContent = e.label;
+    toSel.appendChild(opt2);
+  });
+  if (rollup.length){
+    // 기본값: 올해 1월(또는 첫 달) ~ 최근 실적이 있는 달
+    let idx = rollup.length - 1;
+    for (let i=rollup.length-1;i>=0;i--){
+      if (rollup[i].hasSellThrough || rollup[i].sellInActualUsd!=null){ idx = i; break; }
+    }
+    const lastYear = rollup[idx].key.slice(0,4);
+    const yearStartIdx = rollup.findIndex(e=>e.key.slice(0,4) === lastYear);
+    fromSel.value = rollup[yearStartIdx >= 0 ? yearStartIdx : 0].key;
+    toSel.value = rollup[idx].key;
+  }
+}
+
+function renderMonthRangeSummary(rollup, fromKey, toKey){
+  const kpis = document.getElementById('monthRangeKpis');
+  const emptyHint = document.getElementById('rangeEmptyHint');
+  let lo = fromKey, hi = toKey;
+  if (lo > hi){ const t = lo; lo = hi; hi = t; }
+  const entries = rollup.filter(e => e.key >= lo && e.key <= hi);
+
+  const hasAny = entries.some(e => e.hasSellThrough || e.sellInActualUsd!=null || e.hasMkt);
+  if (!entries.length || !hasAny){
+    kpis.style.display = 'none';
+    emptyHint.style.display = 'block';
+    return;
+  }
+  emptyHint.style.display = 'none';
+  kpis.style.display = 'grid';
+
+  const monthsLabel = `${monthKeyToKoreanLabel(lo)} ~ ${monthKeyToKoreanLabel(hi)} (${entries.length}개월)`;
+
+  const sellThroughSum = entries.reduce((s,e)=> s + (e.hasSellThrough ? e.sellThroughUsd : 0), 0);
+  const sellThroughMonths = entries.filter(e=>e.hasSellThrough).length;
+  document.getElementById('rangeSellThroughValue').textContent = sellThroughMonths ? fmtUsd(sellThroughSum) : '—';
+  document.getElementById('rangeSellThroughSub').textContent = sellThroughMonths ? monthsLabel : '데이터 없음';
+
+  const sellInUsdSum = entries.reduce((s,e)=> s + (e.sellInActualUsd!=null ? e.sellInActualUsd : 0), 0);
+  const sellInMonths = entries.filter(e=>e.sellInActualUsd!=null).length;
+  document.getElementById('rangeSellInUsdValue').textContent = sellInMonths ? fmtUsd(sellInUsdSum) : '—';
+  document.getElementById('rangeSellInUsdSub').textContent = sellInMonths ? monthsLabel : '데이터 없음';
+
+  const sellInKrwSum = entries.reduce((s,e)=> s + (e.sellInActualKrw!=null ? e.sellInActualKrw : 0), 0);
+  document.getElementById('rangeSellInKrwValue').textContent = sellInMonths ? fmtKrw(sellInKrwSum) : '—';
+  document.getElementById('rangeSellInKrwSub').textContent = sellInMonths ? monthsLabel : '데이터 없음';
+
+  const targetSum = entries.reduce((s,e)=> s + (e.sellInTargetKrw||0), 0);
+  const copValueEl = document.getElementById('rangeCopValue');
+  const copSubEl = document.getElementById('rangeCopSub');
+  if (targetSum > 0 && sellInMonths){
+    const pct = sellInKrwSum / targetSum * 100;
+    const c = achColor(pct, 'goal');
+    copValueEl.innerHTML = `<span style="color:${c.fg}">${pctStr(pct)}</span>`;
+    copSubEl.textContent = `COP ${fmtKrw(targetSum)} 대비 실적 ${fmtKrw(sellInKrwSum)}`;
+  } else if (targetSum > 0){
+    copValueEl.textContent = '진행중';
+    copSubEl.textContent = `COP ${fmtKrw(targetSum)} (실적 반영 대기중)`;
+  } else {
+    copValueEl.textContent = '—';
+    copSubEl.textContent = '이 기간 COP 데이터 없음';
+  }
+
+  const mktSum = entries.reduce((s,e)=> s + (e.hasMkt ? e.mktActUsd : 0), 0);
+  const mktMonths = entries.filter(e=>e.hasMkt).length;
+  document.getElementById('rangeCoopValue').textContent = mktMonths ? fmtUsd(mktSum) : '—';
+  document.getElementById('rangeCoopSub').textContent = mktMonths ? monthsLabel : 'COOP 데이터 없음';
 }
 
 function renderMonthlyChart(rollup, selectedKey){
@@ -1340,6 +1440,14 @@ async function init(){
     document.getElementById('monthPicker').addEventListener('change', (ev)=>{
       renderMonthlyDetail(rollupCache, ev.target.value);
       renderMonthlyChart(rollupCache, ev.target.value);
+    });
+
+    populateMonthRangePickers(rollup);
+    const fromSel = document.getElementById('monthRangeFrom');
+    const toSel = document.getElementById('monthRangeTo');
+    renderMonthRangeSummary(rollupCache, fromSel.value, toSel.value);
+    document.getElementById('monthRangeBtn').addEventListener('click', ()=>{
+      renderMonthRangeSummary(rollupCache, fromSel.value, toSel.value);
     });
   } catch(err){
     document.getElementById('headerSub').textContent = '데이터를 불러오는 중 오류가 발생했습니다: ' + err.message;
