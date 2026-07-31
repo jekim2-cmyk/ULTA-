@@ -340,7 +340,7 @@
 
     <div class="upload-card">
       <h3>Sell-in / COP 목표 수동 입력</h3>
-      <div class="desc">해당 월의 Sell-in 실적(USD/KRW)과 COP(목표) 금액(KRW)을 직접 입력합니다. 하나만 입력해도 됩니다. USD/KRW 중 하나를 입력하면 환율 1,480원 기준으로 나머지가 자동으로 채워집니다 (필요하면 직접 수정 가능).</div>
+      <div class="desc">해당 월의 Sell-in 실적(USD/KRW)과 COP(목표) 금액(KRW)을 직접 입력합니다. 하나만 입력해도 됩니다. USD/KRW 중 하나를 입력하면 환율 1,421원 기준으로 나머지가 자동으로 채워집니다 (필요하면 직접 수정 가능).</div>
       <div class="form-row">
         <label for="kpiMonthInput">대상 월</label>
         <input type="text" id="kpiMonthInput" placeholder="예: 2026-06" style="width:120px;">
@@ -591,7 +591,7 @@ function renderMonthlyChart(rollup, selectedKey){
   const datasets = [
     { type:'bar', label:'Sell-in', data: rollup.map(e=>e.sellInActualUsd), backgroundColor: siColors, borderRadius:4, maxBarThickness:22 },
     { type:'bar', label:'Sell-through', data: rollup.map(e=>e.sellThroughUsd || null), backgroundColor: stColors, borderRadius:4, maxBarThickness:22 },
-    { type:'line', label:'COP', data: rollup.map(e=> e.sellInTargetKrw ? e.sellInTargetKrw/1421.48 : null), borderColor:'#9aa2b1', borderDash:[4,3], borderWidth:2, pointRadius:0, spanGaps:true }
+    { type:'line', label:'COP', data: rollup.map(e=> e.sellInTargetKrw ? e.sellInTargetKrw/1421 : null), borderColor:'#9aa2b1', borderDash:[4,3], borderWidth:2, pointRadius:0, spanGaps:true }
   ];
   if (!monthlyChartInstance){
     const ctx = document.getElementById('monthlyChart');
@@ -1243,7 +1243,7 @@ async function uploadRawFile(fileInputEl, type, statusEl, buttonEl){
   }
 }
 
-const KPI_FX_RATE = 1480;
+const KPI_FX_RATE = 1421;
 
 function wireKpiFxAutoFill(){
   const usdInput = document.getElementById('kpiUsdInput');
