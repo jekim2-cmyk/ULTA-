@@ -357,6 +357,13 @@
     </div>
 
     <div class="upload-card">
+      <h3>전체 재계산</h3>
+      <div class="desc">새 파일을 업로드하지 않고, GitHub raw-data 폴더에 이미 있는 원본 파일 전체를 <b>지금 배포된 최신 코드</b>로 다시 계산해서 data.json을 갱신합니다. 계산 로직(pipeline.js)이 업데이트된 직후 눌러주세요. data.json을 직접 만들어서 올리는 것보다 항상 이 방법이 안전합니다 (그 사이 쌓인 수동 입력값·업로드 데이터를 그대로 보존한 채 다시 계산하기 때문).</div>
+      <button class="btn" id="recomputeBtn">재계산 실행</button>
+      <div class="status-msg" id="recomputeStatus"></div>
+    </div>
+
+    <div class="upload-card">
       <h3>Sell-in / COP 목표 수동 입력</h3>
       <div class="desc">해당 월의 Sell-in 실적(USD/KRW)과 COP(목표) 금액(KRW)을 직접 입력합니다. 하나만 입력해도 됩니다. USD/KRW 중 하나를 입력하면 환율 1,421원 기준으로 나머지가 자동으로 채워집니다 (필요하면 직접 수정 가능).</div>
       <div class="form-row">
@@ -1344,6 +1351,24 @@ async function uploadRawFile(fileInputEl, type, statusEl, buttonEl){
   }
 }
 
+async function runRecompute(statusEl, buttonEl){
+  buttonEl.disabled = true;
+  setStatus(statusEl, 'raw-data 폴더 전체를 다시 계산하는 중... (파일 수에 따라 시간이 걸릴 수 있습니다)', 'loading');
+  try {
+    const res = await fetch('/api/recompute', { method: 'POST' });
+    const data = await res.json().catch(()=>({}));
+    if (res.ok && data.ok){
+      setStatus(statusEl, '✓ ' + data.message, 'ok');
+    } else {
+      setStatus(statusEl, data.message || `재계산 실패 (${res.status})`, 'error');
+    }
+  } catch (e){
+    setStatus(statusEl, '재계산 중 오류: ' + e.message, 'error');
+  } finally {
+    buttonEl.disabled = false;
+  }
+}
+
 const KPI_FX_RATE = 1421;
 
 function wireKpiFxAutoFill(){
@@ -1456,6 +1481,9 @@ async function initDataPage(){
 
     document.getElementById('storeSalesUploadBtn').addEventListener('click', ()=>{
       uploadRawFile(document.getElementById('storeSalesFile'), 'store-sales', document.getElementById('storeSalesStatus'), document.getElementById('storeSalesUploadBtn'));
+    });
+    document.getElementById('recomputeBtn').addEventListener('click', ()=>{
+      runRecompute(document.getElementById('recomputeStatus'), document.getElementById('recomputeBtn'));
     });
     document.getElementById('invPerfUploadBtn').addEventListener('click', ()=>{
       uploadRawFile(document.getElementById('invPerfFile'), 'sales-inv-perf', document.getElementById('invPerfStatus'), document.getElementById('invPerfUploadBtn'));
