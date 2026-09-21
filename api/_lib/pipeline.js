@@ -103,7 +103,10 @@ export function parseStoreSales(buffer, filename) {
 
 const COL_DESC = 2, COL_COST = 8, COL_PRICE = 9;
 const COL_UNITS = 10, COL_SALES = 13;
+const COL_EOHUNITS = 34;
 const COL_EOHDOLLARS = 37, COL_WOS = 41;
+const COL_DCEOHUNITS = 42, COL_DCONORDERUNITS = 48;
+const COL_STOREEOHUNITS = 97;
 const COL_STORECOUNT = 107, COL_STOREOUTS = 108, COL_OOSPCT = 109;
 
 export function parseSalesInvPerfWeek(buffer, filename) {
@@ -141,6 +144,10 @@ export function parseSalesInvPerfWeek(buffer, filename) {
     totalUnits: num(overall[COL_UNITS]),
     invEohUsd: round2(overallEoh),
     invWos: overallWos !== null ? round1(overallWos) : null,
+    eohUnits: num(overall[COL_EOHUNITS]),
+    dcEohUnits: num(overall[COL_DCEOHUNITS]),
+    dcOnOrderUnits: num(overall[COL_DCONORDERUNITS]),
+    storeEohUnits: num(overall[COL_STOREEOHUNITS]),
     skus,
   };
 }
@@ -317,6 +324,76 @@ export function buildSkuOos(invWeeks) {
   return out;
 }
 
+// 주차별 재고(EOH)-판매 다이버전스 트렌드용 스냅샷.
+// 판매(Sell-through Units)는 평평한데 재고(EOH Units)나 DC 발주(DC On Order Units)가
+// 늘어나는 구간을 잡아내기 위한 시계열. 월간 롤업이 아니라 주 단위를 그대로 보존.
+export function buildInventoryWeekly(invWeeks) {
+  const byWeek = {};
+  const sortedWeeks = [...invWeeks].sort((a, b) => (a.weekEndDate < b.weekEndDate ? -1 : 1));
+  for (const w of sortedWeeks) {
+    byWeek[w.weekEndDate] = {
+      totalSalesUnits: w.totalUnits,
+      eohUnits: w.eohUnits ?? null,
+      eohUsd: w.invEohUsd,
+      wos: w.invWos,
+      dcEohUnits: w.dcEohUnits ?? null,
+      dcOnOrderUnits: w.dcOnOrderUnits ?? null,
+      storeEohUnits: w.storeEohUnits ?? null,
+    };
+  }
+
+  const weekKeys = Object.keys(byWeek).sort();
+  let divergence = null;
+  const N = 6;
+  if (weekKeys.length >= N) {
+    const recentKeys = weekKeys.slice(-N);
+    const recent = recentKeys.map((k) => byWeek[k]);
+    const half = Math.floor(N / 2);
+    const firstHalf = recent.slice(0, half);
+    const secondHalf = recent.slice(half);
+
+    const avg = (vals) => {
+      const filtered = vals.filter((v) => v !== null && v !== undefined);
+      return filtered.length ? filtered.reduce((s, v) => s + v, 0) / filtered.length : null;
+    };
+    const pctChange = (a, b) => {
+      if (a === null || b === null || a === 0) return null;
+      return Math.round(((b - a) / a) * 1000) / 10;
+    };
+
+    const salesFirst = avg(firstHalf.map((r) => r.totalSalesUnits));
+    const salesSecond = avg(secondHalf.map((r) => r.totalSalesUnits));
+    const eohFirst = avg(firstHalf.map((r) => r.eohUnits));
+    const eohSecond = avg(secondHalf.map((r) => r.eohUnits));
+    const dcFirst = avg(firstHalf.map((r) => r.dcOnOrderUnits));
+    const dcSecond = avg(secondHalf.map((r) => r.dcOnOrderUnits));
+
+    const salesChg = pctChange(salesFirst, salesSecond);
+    const eohChg = pctChange(eohFirst, eohSecond);
+    const dcChg = pctChange(dcFirst, dcSecond);
+
+    let flag = false;
+    const reasons = [];
+    if (salesChg !== null && eohChg !== null && Math.abs(salesChg) <= 10 && eohChg >= 10) {
+      flag = true;
+      reasons.push(`판매는 ${salesChg > 0 ? '+' : ''}${salesChg}%로 평평한데 재고(EOH)는 ${eohChg > 0 ? '+' : ''}${eohChg}% 증가`);
+    }
+    if (salesChg !== null && dcChg !== null && Math.abs(salesChg) <= 10 && dcChg >= 15) {
+      flag = true;
+      reasons.push(`판매는 ${salesChg > 0 ? '+' : ''}${salesChg}%로 평평한데 DC 발주는 ${dcChg > 0 ? '+' : ''}${dcChg}% 증가`);
+    }
+
+    divergence = {
+      windowWeeks: N,
+      fromWeek: recentKeys[0], toWeek: recentKeys[recentKeys.length - 1],
+      salesUnitsChangePct: salesChg, eohUnitsChangePct: eohChg, dcOnOrderChangePct: dcChg,
+      flag, reasons,
+    };
+  }
+
+  return { byWeek, divergence };
+}
+
 export function buildFinancials(invWeeks) {
   const byMonth = {};
   for (const w of invWeeks) {
@@ -408,6 +485,11 @@ export function recomputeSnapshot(existingSnapshot, storeFiles, invFiles, update
     snapshot.financials = {
       byMonth: buildFinancials(invWeeks),
       note: 'ULTA 소매 마진은 (Retail Price - Purch Cost)/Retail Price 기준으로, ULTA 채널 마진 근사치입니다 (Celimax 자체 원가/마진과는 다름). 재고 자산가치/WOS는 해당 월 마지막 업로드 주차 기준 시점 스냅샷입니다. 품절 손실 매출은 OOS%를 이용한 근사 추정치입니다.',
+      uploadedAt: new Date().toISOString(),
+    };
+    snapshot.inventoryWeekly = {
+      ...buildInventoryWeekly(invWeeks),
+      note: 'Sales_Inv_Perf 원본 리포트 기준 주간 판매(Sell-through Units) vs 재고(Total EOH Units) vs DC 발주(DC On Order Units) 추이. 판매는 평평한데 재고/DC발주만 느는 구간을 잡아내기 위한 다이버전스 트렌드입니다.',
       uploadedAt: new Date().toISOString(),
     };
 
