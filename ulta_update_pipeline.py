@@ -121,7 +121,10 @@ def parse_store_sales(path):
 
 COL_DESC, COL_COST, COL_PRICE = 2, 8, 9
 COL_UNITS, COL_SALES = 10, 13
+COL_EOHUNITS = 34
 COL_EOHDOLLARS, COL_WOS = 37, 41
+COL_DCEOHUNITS, COL_DCONORDERUNITS = 42, 48
+COL_STOREEOHUNITS = 97
 COL_STORECOUNT, COL_STOREOUTS, COL_OOSPCT = 107, 108, 109
 
 
@@ -161,6 +164,10 @@ def parse_sales_inv_perf_week(path):
         "totalUnits": num(overall[COL_UNITS]),
         "invEohUsd": round(overall_eoh, 2),
         "invWos": round(overall_wos, 1) if overall_wos is not None else None,
+        "eohUnits": num(overall[COL_EOHUNITS]),
+        "dcEohUnits": num(overall[COL_DCEOHUNITS]),
+        "dcOnOrderUnits": num(overall[COL_DCONORDERUNITS]),
+        "storeEohUnits": num(overall[COL_STOREEOHUNITS]),
         "skus": skus,
     }
 
@@ -330,6 +337,71 @@ def build_sku_oos(inv_weeks):
     return out
 
 
+def build_inventory_weekly(inv_weeks):
+    """주차별 재고(EOH)-판매 다이버전스 트렌드용 스냅샷.
+    판매(Sell-through Units)는 평평한데 재고(EOH Units)나 DC 발주(DC On Order Units)가
+    늘어나는 구간을 잡아내기 위한 시계열. 월간 롤업이 아니라 주 단위를 그대로 보존."""
+    by_week = {}
+    for w in sorted(inv_weeks, key=lambda x: x["weekEndDate"]):
+        by_week[w["weekEndDate"]] = {
+            "totalSalesUnits": w["totalUnits"],
+            "eohUnits": w.get("eohUnits"),
+            "eohUsd": w["invEohUsd"],
+            "wos": w["invWos"],
+            "dcEohUnits": w.get("dcEohUnits"),
+            "dcOnOrderUnits": w.get("dcOnOrderUnits"),
+            "storeEohUnits": w.get("storeEohUnits"),
+        }
+
+    # 최근 구간 다이버전스 감지: 최근 N주 판매 추세 vs 재고/DC발주 추세 비교
+    weeks_sorted = sorted(by_week.keys())
+    divergence = None
+    N = 6
+    if len(weeks_sorted) >= N:
+        recent_keys = weeks_sorted[-N:]
+        recent = [by_week[k] for k in recent_keys]
+        half = N // 2
+        first_half, second_half = recent[:half], recent[half:]
+
+        def avg(vals):
+            vals = [v for v in vals if v is not None]
+            return sum(vals) / len(vals) if vals else None
+
+        sales_first, sales_second = avg([r["totalSalesUnits"] for r in first_half]), avg([r["totalSalesUnits"] for r in second_half])
+        eoh_first, eoh_second = avg([r["eohUnits"] for r in first_half]), avg([r["eohUnits"] for r in second_half])
+        dc_first, dc_second = avg([r["dcOnOrderUnits"] for r in first_half]), avg([r["dcOnOrderUnits"] for r in second_half])
+
+        def pct_change(a, b):
+            if a is None or b is None or a == 0:
+                return None
+            return round((b - a) / a * 100, 1)
+
+        sales_chg = pct_change(sales_first, sales_second)
+        eoh_chg = pct_change(eoh_first, eoh_second)
+        dc_chg = pct_change(dc_first, dc_second)
+
+        flag = False
+        reasons = []
+        if sales_chg is not None and eoh_chg is not None and abs(sales_chg) <= 10 and eoh_chg >= 10:
+            flag = True
+            reasons.append(f"판매는 {sales_chg:+.1f}%로 평평한데 재고(EOH)는 {eoh_chg:+.1f}% 증가")
+        if sales_chg is not None and dc_chg is not None and abs(sales_chg) <= 10 and dc_chg >= 15:
+            flag = True
+            reasons.append(f"판매는 {sales_chg:+.1f}%로 평평한데 DC 발주는 {dc_chg:+.1f}% 증가")
+
+        divergence = {
+            "windowWeeks": N,
+            "fromWeek": recent_keys[0], "toWeek": recent_keys[-1],
+            "salesUnitsChangePct": sales_chg,
+            "eohUnitsChangePct": eoh_chg,
+            "dcOnOrderChangePct": dc_chg,
+            "flag": flag,
+            "reasons": reasons,
+        }
+
+    return {"byWeek": by_week, "divergence": divergence}
+
+
 def build_financials(inv_weeks):
     by_month = {}
     for w in inv_weeks:
@@ -423,6 +495,11 @@ def run(input_dir, existing_json_path, output_json_path):
         snapshot["financials"] = {
             "byMonth": build_financials(inv_weeks),
             "note": "ULTA 소매 마진은 (Retail Price - Purch Cost)/Retail Price 기준으로, ULTA 채널 마진 근사치입니다 (Celimax 자체 원가/마진과는 다름). 재고 자산가치/WOS는 해당 월 마지막 업로드 주차 기준 시점 스냅샷입니다. 품절 손실 매출은 OOS%를 이용한 근사 추정치입니다.",
+            "uploadedAt": datetime.datetime.utcnow().isoformat() + "Z",
+        }
+        snapshot["inventoryWeekly"] = {
+            **build_inventory_weekly(inv_weeks),
+            "note": "Sales_Inv_Perf 원본 리포트 기준 주간 판매(Sell-through Units) vs 재고(Total EOH Units) vs DC 발주(DC On Order Units) 추이. 판매는 평평한데 재고/DC발주만 느는 구간을 잡아내기 위한 다이버전스 트렌드입니다.",
             "uploadedAt": datetime.datetime.utcnow().isoformat() + "Z",
         }
 

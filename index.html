@@ -301,6 +301,24 @@
   </p>
 </div>
 
+<div class="section">
+  <h2>재고(EOH) - 판매 다이버전스 트렌드</h2>
+  <div class="desc" id="invTrendDesc">불러오는 중...</div>
+
+  <div id="invTrendAlert" style="display:none; margin-bottom:14px; border-radius:10px; padding:12px 14px; font-size:12.5px; line-height:1.6;"></div>
+
+  <div id="invTrendChartWrap" style="position:relative; height:280px; display:none;">
+    <canvas id="invTrendChart"></canvas>
+  </div>
+  <div id="invTrendEmpty" class="empty-hint" style="display:none;">아직 재고 추이 데이터가 없습니다</div>
+
+  <p style="font-size:11px; color:var(--muted); margin-top:12px; line-height:1.6;">
+    판매(Sell-through Units)는 평평한데 재고(Total EOH Units)나 DC 발주(DC On Order Units)만 늘어나는 구간을 잡아내기 위한 시계열입니다.
+    Sell-in/Sell-out 누적 비교와 달리, ULTA가 공개하는 실제 재고 데이터를 그대로 시계열로 쌓은 값이라 판매와 무관하게 재고/발주가 늘고 있는지를 바로 확인할 수 있습니다
+    (예: 미리 공유되지 않은 프로모션·Big Bet 물량으로 인한 발주 증가 등).
+  </p>
+</div>
+
 </div>
 
 <div class="page" data-page="coop">
@@ -926,6 +944,89 @@ function initFinancials(finData, qtdYtd){
   }
 }
 
+let invTrendChartInstance = null;
+
+function initInventoryTrend(inventoryWeekly){
+  const desc = document.getElementById('invTrendDesc');
+  const alertBox = document.getElementById('invTrendAlert');
+  const chartWrap = document.getElementById('invTrendChartWrap');
+  const emptyEl = document.getElementById('invTrendEmpty');
+
+  const byWeek = (inventoryWeekly && inventoryWeekly.byWeek) || {};
+  const weekKeys = Object.keys(byWeek).sort();
+
+  if (!weekKeys.length){
+    desc.textContent = '아직 재고 추이 데이터가 없습니다';
+    alertBox.style.display = 'none';
+    chartWrap.style.display = 'none';
+    emptyEl.style.display = 'block';
+    if (invTrendChartInstance){ invTrendChartInstance.destroy(); invTrendChartInstance = null; }
+    return;
+  }
+
+  desc.textContent = `${weekKeys[0]} ~ ${weekKeys[weekKeys.length-1]} · ${weekKeys.length}주 기준 주간 판매 vs 재고(EOH) vs DC 발주 추이`;
+  chartWrap.style.display = 'block';
+  emptyEl.style.display = 'none';
+
+  const div = inventoryWeekly.divergence;
+  const pctOrDash = (n)=> n!=null ? pctStr(n) : '-';
+  if (div){
+    alertBox.style.display = 'block';
+    if (div.flag){
+      alertBox.style.background = '#fdeeea';
+      alertBox.style.border = '1px solid #f2c6bb';
+      alertBox.innerHTML = `<b style="color:#c0392b;">⚠ 다이버전스 감지</b> (최근 ${div.windowWeeks}주, ${div.fromWeek} ~ ${div.toWeek})<br>` +
+        div.reasons.map(r=>`· ${r}`).join('<br>') +
+        `<br><span style="color:var(--muted);">판매 ${pctOrDash(div.salesUnitsChangePct)} · 재고(EOH) ${pctOrDash(div.eohUnitsChangePct)} · DC 발주 ${pctOrDash(div.dcOnOrderChangePct)}</span>`;
+    } else {
+      alertBox.style.background = '#eef7ef';
+      alertBox.style.border = '1px solid #cde8cf';
+      alertBox.innerHTML = `<b style="color:#2e7d32;">정상 범위</b> (최근 ${div.windowWeeks}주, ${div.fromWeek} ~ ${div.toWeek}) · 판매와 재고/DC 발주 추세에 뚜렷한 괴리가 없습니다.<br>` +
+        `<span style="color:var(--muted);">판매 ${pctOrDash(div.salesUnitsChangePct)} · 재고(EOH) ${pctOrDash(div.eohUnitsChangePct)} · DC 발주 ${pctOrDash(div.dcOnOrderChangePct)}</span>`;
+    }
+  } else {
+    alertBox.style.display = 'block';
+    alertBox.style.background = '#f4f5f7';
+    alertBox.style.border = '1px solid #e3e6ec';
+    alertBox.innerHTML = `<span style="color:var(--muted);">다이버전스 판정을 위해서는 최소 6주치 데이터가 필요합니다 (현재 ${weekKeys.length}주 누적)</span>`;
+  }
+
+  const labels = weekKeys.map(k=>k.slice(5));
+  const salesData = weekKeys.map(k=> byWeek[k].totalSalesUnits);
+  const eohData = weekKeys.map(k=> byWeek[k].eohUnits);
+  const dcData = weekKeys.map(k=> byWeek[k].dcOnOrderUnits);
+
+  const datasets = [
+    { label:'Sell-through Units', data: salesData, borderColor:'#3a6ea5', backgroundColor:'#3a6ea5', yAxisID:'y', tension:0.25, pointRadius:2 },
+    { label:'Total EOH Units (재고)', data: eohData, borderColor:'#8e44ad', backgroundColor:'#8e44ad', yAxisID:'y1', tension:0.25, pointRadius:2 },
+    { label:'DC On Order Units (DC 발주)', data: dcData, borderColor:'#e8712f', backgroundColor:'#e8712f', yAxisID:'y1', borderDash:[5,3], tension:0.25, pointRadius:2 },
+  ];
+
+  if (!invTrendChartInstance){
+    const ctx = document.getElementById('invTrendChart');
+    invTrendChartInstance = new Chart(ctx, {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        interaction:{ mode:'index', intersect:false },
+        plugins:{ legend:{ display:true, position:'bottom', labels:{ boxWidth:10, font:{size:10.5} } }, tooltip:{ mode:'index', intersect:false, callbacks:{
+          label:function(c){ return c.dataset.label + ': ' + (c.raw==null?'-':Number(c.raw).toLocaleString()); }
+        } } },
+        scales:{
+          x:{ grid:{ display:false }, ticks:{ font:{size:10.5} } },
+          y:{ position:'left', grid:{ color:'#eef1f6' }, title:{ display:true, text:'Sell-through Units', font:{size:10.5} }, ticks:{ font:{size:10.5} } },
+          y1:{ position:'right', grid:{ display:false }, title:{ display:true, text:'EOH / DC 발주 Units', font:{size:10.5} }, ticks:{ font:{size:10.5} } }
+        }
+      }
+    });
+  } else {
+    invTrendChartInstance.data.labels = labels;
+    invTrendChartInstance.data.datasets = datasets;
+    invTrendChartInstance.update();
+  }
+}
+
 let weeklyChartInstance = null;
 
 function monthsInPeriod(periodType, key){
@@ -1388,6 +1489,7 @@ async function init(){
     const skuWeekly = snapshot.skuWeekly || null;
     const financials = snapshot.financials || null;
     const qtdYtd = snapshot.qtdYtd || null;
+    const inventoryWeekly = snapshot.inventoryWeekly || null;
 
     const updatedAt = snapshot.snapshotUpdatedAt ? new Date(snapshot.snapshotUpdatedAt) : null;
     document.getElementById('headerSub').textContent = updatedAt
@@ -1407,6 +1509,7 @@ async function init(){
       initSkuOos(skuSales, skuOos);
       renderSkuWow(skuWeekly);
       initFinancials(financials, qtdYtd);
+      initInventoryTrend(inventoryWeekly);
       return;
     }
 
@@ -1426,6 +1529,7 @@ async function init(){
     initSkuOos(skuSales, skuOos);
     renderSkuWow(skuWeekly);
     initFinancials(financials, qtdYtd);
+    initInventoryTrend(inventoryWeekly);
 
     document.querySelector('#monthlyTable tbody').innerHTML = rollup.map(e=>{
       let achCell = '-';
