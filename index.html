@@ -269,6 +269,15 @@
     <thead><tr><th>SKU</th><th>이번 주</th><th>전주</th><th>증감</th><th>증감률</th></tr></thead>
     <tbody><tr><td colspan="5" class="empty-hint">불러오는 중...</td></tr></tbody>
   </table>
+
+  <p style="font-size:11.5px; font-weight:700; color:var(--navy); margin:22px 0 6px;">제품별 월별 판매 수량 (상위 20개, 합계순)</p>
+  <div class="desc" id="skuMonthlyUnitsDesc" style="margin-bottom:8px;">불러오는 중...</div>
+  <div style="overflow-x:auto;">
+    <table id="skuMonthlyUnitsTable">
+      <thead><tr><th style="position:sticky; left:0; background:var(--card);">제품</th></tr></thead>
+      <tbody><tr><td class="empty-hint">불러오는 중...</td></tr></tbody>
+    </table>
+  </div>
 </div>
 
 </div>
@@ -840,6 +849,34 @@ function renderSkuMonth(skuData, oosData, key){
   } else {
     document.querySelector('#oosTable tbody').innerHTML = oosRows.map(o=>`<tr><td>${o.desc}</td><td style="color:${oosColor(o.avgOosPct)}; font-weight:600;">${o.avgOosPct}%</td><td>${o.maxOosPct}%</td><td>${o.weeks}주</td></tr>`).join('');
   }
+}
+
+function renderSkuMonthlyUnits(skuMonthlyUnits){
+  const desc = document.getElementById('skuMonthlyUnitsDesc');
+  const table = document.getElementById('skuMonthlyUnitsTable');
+  const thead = table.querySelector('thead tr');
+  const tbody = table.querySelector('tbody');
+
+  const months = (skuMonthlyUnits && skuMonthlyUnits.months) || [];
+  const skus = (skuMonthlyUnits && skuMonthlyUnits.skus) || [];
+
+  if (!months.length || !skus.length){
+    desc.textContent = '아직 데이터가 없습니다 (Sales_Inv_Perf 원본 파일 업로드 필요)';
+    thead.innerHTML = '<th style="position:sticky; left:0; background:var(--card);">제품</th>';
+    tbody.innerHTML = '<tr><td class="empty-hint">데이터 없음</td></tr>';
+    return;
+  }
+
+  desc.textContent = `${months[0]} ~ ${months[months.length-1]} · 판매 수량(개) 기준 상위 ${skus.length}개 제품`;
+
+  thead.innerHTML = '<th style="position:sticky; left:0; background:var(--card);">제품</th>' +
+    months.map(mk=>`<th>${monthKeyToKoreanLabel(mk)}</th>`).join('') +
+    '<th>합계</th>';
+
+  tbody.innerHTML = skus.map(s=>{
+    const cells = months.map(mk=> `<td>${(s.byMonth[mk]||0).toLocaleString()}</td>`).join('');
+    return `<tr><td style="position:sticky; left:0; background:var(--card); font-weight:600;">${s.desc}</td>${cells}<td style="font-weight:700;">${s.totalUnits.toLocaleString()}</td></tr>`;
+  }).join('');
 }
 
 function initSkuOos(skuData, oosData){
@@ -1515,6 +1552,7 @@ async function init(){
     const skuSales = snapshot.skuSales || null;
     const skuOos = snapshot.skuOos || null;
     const skuWeekly = snapshot.skuWeekly || null;
+    const skuMonthlyUnits = snapshot.skuMonthlyUnits || null;
     const financials = snapshot.financials || null;
     const qtdYtd = snapshot.qtdYtd || null;
     const inventoryWeekly = snapshot.inventoryWeekly || null;
@@ -1536,6 +1574,7 @@ async function init(){
       renderStoreWow(storeWeekly);
       initSkuOos(skuSales, skuOos);
       renderSkuWow(skuWeekly);
+      renderSkuMonthlyUnits(skuMonthlyUnits);
       initFinancials(financials, qtdYtd);
       initInventoryTrend(inventoryWeekly);
       return;
@@ -1556,6 +1595,7 @@ async function init(){
     renderStoreWow(storeWeekly);
     initSkuOos(skuSales, skuOos);
     renderSkuWow(skuWeekly);
+    renderSkuMonthlyUnits(skuMonthlyUnits);
     initFinancials(financials, qtdYtd);
     initInventoryTrend(inventoryWeekly);
 

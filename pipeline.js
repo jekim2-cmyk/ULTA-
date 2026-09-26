@@ -271,6 +271,39 @@ export function buildSkuSales(invWeeks) {
   return out;
 }
 
+// 제품(SKU)별 월별 판매 수량을 나란히 볼 수 있는 표. 상위 topN개 제품만, 월별 합계 컬럼 포함.
+export function buildSkuMonthlyUnits(invWeeks, topN = 20) {
+  const bySkuMonth = {};
+  const monthsSet = new Set();
+  for (const w of invWeeks) {
+    const mk = monthKey(w.weekEndDate);
+    monthsSet.add(mk);
+    for (const sku of w.skus) {
+      const units = sku.units;
+      if (units === null || units === undefined) continue;
+      if (!bySkuMonth[sku.desc]) bySkuMonth[sku.desc] = {};
+      const e = bySkuMonth[sku.desc];
+      e[mk] = (e[mk] || 0) + units;
+    }
+  }
+
+  const months = [...monthsSet].sort();
+  const totals = {};
+  for (const desc of Object.keys(bySkuMonth)) {
+    totals[desc] = Object.values(bySkuMonth[desc]).reduce((s, v) => s + v, 0);
+  }
+  const topDescs = Object.keys(totals).sort((a, b) => totals[b] - totals[a]).slice(0, topN);
+
+  const skus = topDescs.map((desc) => {
+    const byMonth = bySkuMonth[desc];
+    const out = {};
+    for (const mk of months) out[mk] = byMonth[mk] || 0;
+    return { desc, totalUnits: totals[desc], byMonth: out };
+  });
+
+  return { months, skus };
+}
+
 export function buildSkuWeekly(invWeeks) {
   const byWeek = {};
   for (const w of invWeeks) {
@@ -475,6 +508,11 @@ export function recomputeSnapshot(existingSnapshot, storeFiles, invFiles, update
     snapshot.skuWeekly = {
       byWeek: buildSkuWeekly(invWeeks),
       note: 'Sales_Inv_Perf 원본 리포트의 Last Closed Week 시트 기준 주간 SKU별 매출 (전주 대비 비교용)',
+      uploadedAt: new Date().toISOString(),
+    };
+    snapshot.skuMonthlyUnits = {
+      ...buildSkuMonthlyUnits(invWeeks),
+      note: 'Sales_Inv_Perf 원본 리포트 기준 제품(SKU)별 월별 판매 수량 (상위 20개 제품, 월별 나란히 비교용)',
       uploadedAt: new Date().toISOString(),
     };
     snapshot.skuOos = {
