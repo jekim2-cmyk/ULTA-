@@ -103,7 +103,10 @@ export function parseStoreSales(buffer, filename) {
 
 const COL_DESC = 2, COL_COST = 8, COL_PRICE = 9;
 const COL_UNITS = 10, COL_SALES = 13;
+const COL_EOHUNITS = 34;
 const COL_EOHDOLLARS = 37, COL_WOS = 41;
+const COL_DCEOHUNITS = 42, COL_DCONORDERUNITS = 48;
+const COL_STOREEOHUNITS = 97;
 const COL_STORECOUNT = 107, COL_STOREOUTS = 108, COL_OOSPCT = 109;
 
 export function parseSalesInvPerfWeek(buffer, filename) {
@@ -141,7 +144,108 @@ export function parseSalesInvPerfWeek(buffer, filename) {
     totalUnits: num(overall[COL_UNITS]),
     invEohUsd: round2(overallEoh),
     invWos: overallWos !== null ? round1(overallWos) : null,
+    eohUnits: num(overall[COL_EOHUNITS]),
+    dcEohUnits: num(overall[COL_DCEOHUNITS]),
+    dcOnOrderUnits: num(overall[COL_DCONORDERUNITS]),
+    storeEohUnits: num(overall[COL_STOREEOHUNITS]),
     skus,
+  };
+}
+
+// ---------- Order_Proj 파싱 (ULTA 자동 발주 예측) ----------
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
+  'September', 'October', 'November', 'December'];
+
+// 각 월 = 합계(SKU별 예상 수량 x Purchase Cost(Average)). 파일명 날짜 = 리포트 생성일.
+export function parseOrderProj(buffer, filename) {
+  const base = filename.replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '');
+  const genDate = base.slice(-10);
+  const wb = XLSX.read(buffer, { type: 'buffer' });
+  const rows = sheetRows(wb, 'Sheet1');
+  const hdrIdx = findHeaderRow(rows, 'UPC#');
+  if (hdrIdx === null) throw new Error('Order_Proj 파일에서 "UPC#" 헤더를 찾지 못했습니다.');
+  const hdr = rows[hdrIdx];
+  const costCol = hdr.findIndex((v) => typeof v === 'string' && v.includes('Purchase Cost'));
+  const descCol = hdr.findIndex((v) => typeof v === 'string' && v.includes('Item Description'));
+  const itemCol = hdr.findIndex((v) => typeof v === 'string' && v.includes('ULTA Item#'));
+  const monthCols = [];
+  hdr.forEach((v, j) => {
+    const mi = MONTH_NAMES.indexOf(v);
+    if (mi >= 0) monthCols.push([j, mi + 1]);
+  });
+
+  // 첫 월 컬럼의 연도 = 리포트 생성 연도, 월이 줄어들면(12월 -> 1월) 연도 +1
+  let year = parseInt(genDate.slice(0, 4), 10);
+  let prevM = null;
+  const keyed = [];
+  for (const [j, m] of monthCols) {
+    if (prevM !== null && m < prevM) year += 1;
+    keyed.push([j, `${year}-${String(m).padStart(2, '0')}`]);
+    prevM = m;
+  }
+
+  const dataRows = rows.slice(hdrIdx + 1);
+  const months = {};
+  const skuUnits = {};
+  for (const [j, key] of keyed) {
+    let tot = 0;
+    for (const r of dataRows) {
+      if (r[0] === null || r[0] === undefined || r[0] === 'Overall Result') continue;
+      const u = r[j], c = r[costCol];
+      if (typeof u === 'number' && typeof c === 'number') tot += u * c;
+      if (typeof u === 'number' && r[itemCol]) {
+        const it = String(r[itemCol]).trim();
+        if (!skuUnits[it]) skuUnits[it] = { desc: String(r[descCol]).trim(), byMonth: {} };
+        skuUnits[it].byMonth[key] = (skuUnits[it].byMonth[key] || 0) + u;
+      }
+    }
+    months[key] = round2(tot);
+  }
+  return { genDate, months, skuUnits, fileName: filename };
+}
+
+// 기존 orderProjection(byMonth)을 바탕으로, 리포트 생성일 순으로 각 월을 '가장 최근 리포트' 값으로 덮어씀.
+export function buildOrderProjection(existingOp, orderFiles) {
+  const prev = existingOp || {};
+  const byMonth = { ...(prev.byMonth || {}) };
+  const fileNames = [...(prev.fileNames || [])];
+  const parsed = orderFiles.map((f) => parseOrderProj(f.buffer, f.filename)).sort((a, b) => (a.genDate < b.genDate ? -1 : 1));
+  // 제품별: 기존 bySku를 itemNo 기준으로 펼친 뒤, 최신 리포트 순으로 월 단위 덮어쓰기
+  const skuMap = {};
+  for (const sr of ((prev.bySku || {}).skus || [])) {
+    skuMap[sr.itemNo] = { desc: sr.desc, byMonth: { ...(sr.byMonth || {}) } };
+  }
+  for (const pr of parsed) {
+    for (const [k, v] of Object.entries(pr.months)) byMonth[k] = v;
+    // 이 리포트가 포함한 월은 모든 SKU에 대해 이 리포트 값으로 덮어씀 (리포트에 없는 SKU는 0)
+    for (const k of Object.keys(pr.months)) {
+      for (const e of Object.values(skuMap)) e.byMonth[k] = 0;
+    }
+    for (const [it, info] of Object.entries(pr.skuUnits)) {
+      if (!skuMap[it]) skuMap[it] = { desc: info.desc, byMonth: {} };
+      skuMap[it].desc = info.desc;
+      for (const [k, u] of Object.entries(info.byMonth)) skuMap[it].byMonth[k] = u;
+    }
+    if (!fileNames.includes(pr.fileName)) fileNames.push(pr.fileName);
+  }
+  const skuMonths = [...new Set(Object.values(skuMap).flatMap((e) => Object.keys(e.byMonth)))].sort();
+  const skuRows = [];
+  for (const [it, e] of Object.entries(skuMap)) {
+    const full = {};
+    for (const k of skuMonths) full[k] = e.byMonth[k] || 0;
+    const total = Object.values(full).reduce((a, b) => a + b, 0);
+    if (total > 0) skuRows.push({ itemNo: it, desc: e.desc, totalUnits: total, byMonth: full });
+  }
+  skuRows.sort((a, b) => b.totalUnits - a.totalUnits);
+  const sortedByMonth = {};
+  for (const k of Object.keys(byMonth).sort()) sortedByMonth[k] = byMonth[k];
+  return {
+    bySku: { months: skuMonths, skus: skuRows },
+    byMonth: sortedByMonth,
+    basis: 'purchase_cost_usd',
+    fileNames,
+    note: 'ULTA 시스템이 자동 생성하는 비확정 발주 예측치(참고용). 각 월은 해당 월을 포함한 가장 최근 리포트 기준 (SKU별 예상 수량 x 평균 매입원가). Sell-in 목표/실적 비교에는 사용하지 않음.',
   };
 }
 
@@ -222,6 +326,20 @@ export function buildStoreRanking(storeWeeks) {
   return out;
 }
 
+// 주차별 매장 순위 스냅샷 (전주 대비 순위 변동 비교용). 월간 롤업과 달리 주 단위를 그대로 보존.
+export function buildStoreWeekly(storeWeeks) {
+  const byWeek = {};
+  for (const w of storeWeeks) {
+    const sorted = [...w.topStores].sort((a, b) => b.sales - a.sales).slice(0, 20);
+    const ranked = sorted.map((s, i) => ({
+      rank: i + 1, storeNum: s.storeNum, storeName: s.storeName,
+      sales: round2(s.sales), units: s.units,
+    }));
+    byWeek[w.weekEndDate] = { totalSales: w.totalSales, storeCount: w.storeCount, topStores: ranked };
+  }
+  return byWeek;
+}
+
 export function buildSkuSales(invWeeks) {
   const byMonth = {};
   for (const w of invWeeks) {
@@ -248,6 +366,39 @@ export function buildSkuSales(invWeeks) {
     };
   }
   return out;
+}
+
+// 제품(SKU)별 월별 판매 수량을 나란히 볼 수 있는 표. 상위 topN개 제품만, 월별 합계 컬럼 포함.
+export function buildSkuMonthlyUnits(invWeeks, topN = 20) {
+  const bySkuMonth = {};
+  const monthsSet = new Set();
+  for (const w of invWeeks) {
+    const mk = monthKey(w.weekEndDate);
+    monthsSet.add(mk);
+    for (const sku of w.skus) {
+      const units = sku.units;
+      if (units === null || units === undefined) continue;
+      if (!bySkuMonth[sku.desc]) bySkuMonth[sku.desc] = {};
+      const e = bySkuMonth[sku.desc];
+      e[mk] = (e[mk] || 0) + units;
+    }
+  }
+
+  const months = [...monthsSet].sort();
+  const totals = {};
+  for (const desc of Object.keys(bySkuMonth)) {
+    totals[desc] = Object.values(bySkuMonth[desc]).reduce((s, v) => s + v, 0);
+  }
+  const topDescs = Object.keys(totals).sort((a, b) => totals[b] - totals[a]).slice(0, topN);
+
+  const skus = topDescs.map((desc) => {
+    const byMonth = bySkuMonth[desc];
+    const out = {};
+    for (const mk of months) out[mk] = byMonth[mk] || 0;
+    return { desc, totalUnits: totals[desc], byMonth: out };
+  });
+
+  return { months, skus };
 }
 
 export function buildSkuWeekly(invWeeks) {
@@ -303,6 +454,76 @@ export function buildSkuOos(invWeeks) {
   return out;
 }
 
+// 주차별 재고(EOH)-판매 다이버전스 트렌드용 스냅샷.
+// 판매(Sell-through Units)는 평평한데 재고(EOH Units)나 DC 발주(DC On Order Units)가
+// 늘어나는 구간을 잡아내기 위한 시계열. 월간 롤업이 아니라 주 단위를 그대로 보존.
+export function buildInventoryWeekly(invWeeks) {
+  const byWeek = {};
+  const sortedWeeks = [...invWeeks].sort((a, b) => (a.weekEndDate < b.weekEndDate ? -1 : 1));
+  for (const w of sortedWeeks) {
+    byWeek[w.weekEndDate] = {
+      totalSalesUnits: w.totalUnits,
+      eohUnits: w.eohUnits ?? null,
+      eohUsd: w.invEohUsd,
+      wos: w.invWos,
+      dcEohUnits: w.dcEohUnits ?? null,
+      dcOnOrderUnits: w.dcOnOrderUnits ?? null,
+      storeEohUnits: w.storeEohUnits ?? null,
+    };
+  }
+
+  const weekKeys = Object.keys(byWeek).sort();
+  let divergence = null;
+  const N = 6;
+  if (weekKeys.length >= N) {
+    const recentKeys = weekKeys.slice(-N);
+    const recent = recentKeys.map((k) => byWeek[k]);
+    const half = Math.floor(N / 2);
+    const firstHalf = recent.slice(0, half);
+    const secondHalf = recent.slice(half);
+
+    const avg = (vals) => {
+      const filtered = vals.filter((v) => v !== null && v !== undefined);
+      return filtered.length ? filtered.reduce((s, v) => s + v, 0) / filtered.length : null;
+    };
+    const pctChange = (a, b) => {
+      if (a === null || b === null || a === 0) return null;
+      return Math.round(((b - a) / a) * 1000) / 10;
+    };
+
+    const salesFirst = avg(firstHalf.map((r) => r.totalSalesUnits));
+    const salesSecond = avg(secondHalf.map((r) => r.totalSalesUnits));
+    const eohFirst = avg(firstHalf.map((r) => r.eohUnits));
+    const eohSecond = avg(secondHalf.map((r) => r.eohUnits));
+    const dcFirst = avg(firstHalf.map((r) => r.dcOnOrderUnits));
+    const dcSecond = avg(secondHalf.map((r) => r.dcOnOrderUnits));
+
+    const salesChg = pctChange(salesFirst, salesSecond);
+    const eohChg = pctChange(eohFirst, eohSecond);
+    const dcChg = pctChange(dcFirst, dcSecond);
+
+    let flag = false;
+    const reasons = [];
+    if (salesChg !== null && eohChg !== null && Math.abs(salesChg) <= 10 && eohChg >= 10) {
+      flag = true;
+      reasons.push(`판매는 ${salesChg > 0 ? '+' : ''}${salesChg}%로 평평한데 재고(EOH)는 ${eohChg > 0 ? '+' : ''}${eohChg}% 증가`);
+    }
+    if (salesChg !== null && dcChg !== null && Math.abs(salesChg) <= 10 && dcChg >= 15) {
+      flag = true;
+      reasons.push(`판매는 ${salesChg > 0 ? '+' : ''}${salesChg}%로 평평한데 DC 발주는 ${dcChg > 0 ? '+' : ''}${dcChg}% 증가`);
+    }
+
+    divergence = {
+      windowWeeks: N,
+      fromWeek: recentKeys[0], toWeek: recentKeys[recentKeys.length - 1],
+      salesUnitsChangePct: salesChg, eohUnitsChangePct: eohChg, dcOnOrderChangePct: dcChg,
+      flag, reasons,
+    };
+  }
+
+  return { byWeek, divergence };
+}
+
 export function buildFinancials(invWeeks) {
   const byMonth = {};
   for (const w of invWeeks) {
@@ -341,7 +562,7 @@ export function buildFinancials(invWeeks) {
 // ---------- 스냅샷(data.json) 전체 재계산 ----------
 // existingSnapshot: 현재 data.json 파싱 결과 (target/marketing/kpiMonthly 등은 그대로 보존)
 // storeFiles / invFiles: [{ filename, buffer }] 배열 (raw-data 폴더 내 전체 원본 파일)
-export function recomputeSnapshot(existingSnapshot, storeFiles, invFiles, updatedByEmail) {
+export function recomputeSnapshot(existingSnapshot, storeFiles, invFiles, updatedByEmail, orderFiles = []) {
   const snapshot = JSON.parse(JSON.stringify(existingSnapshot));
 
   const storeWeeks = storeFiles.map((f) => parseStoreSales(f.buffer, f.filename));
@@ -368,6 +589,11 @@ export function recomputeSnapshot(existingSnapshot, storeFiles, invFiles, update
       uploadedAt: new Date().toISOString(),
       note: 'Store-Sales 원본 xlsx 파일이 업로드된 주차만 집계됨. 일부 월은 부분 데이터일 수 있음.',
     };
+    snapshot.storeWeekly = {
+      byWeek: buildStoreWeekly(storeWeeks),
+      note: 'Store-Sales 원본 리포트 기준 주간 매장별 매출 순위 (전주 대비 순위 변동 비교용)',
+      uploadedAt: new Date().toISOString(),
+    };
   }
 
   if (invWeeks.length) {
@@ -381,6 +607,11 @@ export function recomputeSnapshot(existingSnapshot, storeFiles, invFiles, update
       note: 'Sales_Inv_Perf 원본 리포트의 Last Closed Week 시트 기준 주간 SKU별 매출 (전주 대비 비교용)',
       uploadedAt: new Date().toISOString(),
     };
+    snapshot.skuMonthlyUnits = {
+      ...buildSkuMonthlyUnits(invWeeks),
+      note: 'Sales_Inv_Perf 원본 리포트 기준 제품(SKU)별 월별 판매 수량 (상위 20개 제품, 월별 나란히 비교용)',
+      uploadedAt: new Date().toISOString(),
+    };
     snapshot.skuOos = {
       byMonth: buildSkuOos(invWeeks),
       note: 'Sales_Inv_Perf 원본 리포트의 Store Out of Stock % 컬럼 기준 (판매 상위 8~10개 SKU만 추적됨, storeCount 가중평균)',
@@ -391,6 +622,11 @@ export function recomputeSnapshot(existingSnapshot, storeFiles, invFiles, update
       note: 'ULTA 소매 마진은 (Retail Price - Purch Cost)/Retail Price 기준으로, ULTA 채널 마진 근사치입니다 (Celimax 자체 원가/마진과는 다름). 재고 자산가치/WOS는 해당 월 마지막 업로드 주차 기준 시점 스냅샷입니다. 품절 손실 매출은 OOS%를 이용한 근사 추정치입니다.',
       uploadedAt: new Date().toISOString(),
     };
+    snapshot.inventoryWeekly = {
+      ...buildInventoryWeekly(invWeeks),
+      note: 'Sales_Inv_Perf 원본 리포트 기준 주간 판매(Sell-through Units) vs 재고(Total EOH Units) vs DC 발주(DC On Order Units) 추이. 판매는 평평한데 재고/DC발주만 느는 구간을 잡아내기 위한 다이버전스 트렌드입니다.',
+      uploadedAt: new Date().toISOString(),
+    };
 
     const latestInv = invFiles[invFiles.length - 1];
     const qtdYtd = parseQtdYtd(latestInv.buffer);
@@ -399,6 +635,13 @@ export function recomputeSnapshot(existingSnapshot, storeFiles, invFiles, update
       qtd: qtdYtd.qtd, ytd: qtdYtd.ytd,
       asOfDate: latestWeekEnd,
       note: 'ULTA Sales_Inv_Perf 리포트의 Quarter to Date / Year to Date 시트에서 그대로 가져온 누적 실적입니다.',
+    };
+  }
+
+  if (orderFiles.length) {
+    snapshot.orderProjection = {
+      ...buildOrderProjection(snapshot.orderProjection, orderFiles),
+      uploadedAt: new Date().toISOString(),
     };
   }
 
