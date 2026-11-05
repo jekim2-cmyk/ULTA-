@@ -152,6 +152,103 @@ export function parseSalesInvPerfWeek(buffer, filename) {
   };
 }
 
+// ---------- Order_Proj 파싱 (ULTA 자동 발주 예측) ----------
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
+  'September', 'October', 'November', 'December'];
+
+// 각 월 = 합계(SKU별 예상 수량 x Purchase Cost(Average)). 파일명 날짜 = 리포트 생성일.
+export function parseOrderProj(buffer, filename) {
+  const base = filename.replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '');
+  const genDate = base.slice(-10);
+  const wb = XLSX.read(buffer, { type: 'buffer' });
+  const rows = sheetRows(wb, 'Sheet1');
+  const hdrIdx = findHeaderRow(rows, 'UPC#');
+  if (hdrIdx === null) throw new Error('Order_Proj 파일에서 "UPC#" 헤더를 찾지 못했습니다.');
+  const hdr = rows[hdrIdx];
+  const costCol = hdr.findIndex((v) => typeof v === 'string' && v.includes('Purchase Cost'));
+  const descCol = hdr.findIndex((v) => typeof v === 'string' && v.includes('Item Description'));
+  const itemCol = hdr.findIndex((v) => typeof v === 'string' && v.includes('ULTA Item#'));
+  const monthCols = [];
+  hdr.forEach((v, j) => {
+    const mi = MONTH_NAMES.indexOf(v);
+    if (mi >= 0) monthCols.push([j, mi + 1]);
+  });
+
+  // 첫 월 컬럼의 연도 = 리포트 생성 연도, 월이 줄어들면(12월 -> 1월) 연도 +1
+  let year = parseInt(genDate.slice(0, 4), 10);
+  let prevM = null;
+  const keyed = [];
+  for (const [j, m] of monthCols) {
+    if (prevM !== null && m < prevM) year += 1;
+    keyed.push([j, `${year}-${String(m).padStart(2, '0')}`]);
+    prevM = m;
+  }
+
+  const dataRows = rows.slice(hdrIdx + 1);
+  const months = {};
+  const skuUnits = {};
+  for (const [j, key] of keyed) {
+    let tot = 0;
+    for (const r of dataRows) {
+      if (r[0] === null || r[0] === undefined || r[0] === 'Overall Result') continue;
+      const u = r[j], c = r[costCol];
+      if (typeof u === 'number' && typeof c === 'number') tot += u * c;
+      if (typeof u === 'number' && r[itemCol]) {
+        const it = String(r[itemCol]).trim();
+        if (!skuUnits[it]) skuUnits[it] = { desc: String(r[descCol]).trim(), byMonth: {} };
+        skuUnits[it].byMonth[key] = (skuUnits[it].byMonth[key] || 0) + u;
+      }
+    }
+    months[key] = round2(tot);
+  }
+  return { genDate, months, skuUnits, fileName: filename };
+}
+
+// 기존 orderProjection(byMonth)을 바탕으로, 리포트 생성일 순으로 각 월을 '가장 최근 리포트' 값으로 덮어씀.
+export function buildOrderProjection(existingOp, orderFiles) {
+  const prev = existingOp || {};
+  const byMonth = { ...(prev.byMonth || {}) };
+  const fileNames = [...(prev.fileNames || [])];
+  const parsed = orderFiles.map((f) => parseOrderProj(f.buffer, f.filename)).sort((a, b) => (a.genDate < b.genDate ? -1 : 1));
+  // 제품별: 기존 bySku를 itemNo 기준으로 펼친 뒤, 최신 리포트 순으로 월 단위 덮어쓰기
+  const skuMap = {};
+  for (const sr of ((prev.bySku || {}).skus || [])) {
+    skuMap[sr.itemNo] = { desc: sr.desc, byMonth: { ...(sr.byMonth || {}) } };
+  }
+  for (const pr of parsed) {
+    for (const [k, v] of Object.entries(pr.months)) byMonth[k] = v;
+    // 이 리포트가 포함한 월은 모든 SKU에 대해 이 리포트 값으로 덮어씀 (리포트에 없는 SKU는 0)
+    for (const k of Object.keys(pr.months)) {
+      for (const e of Object.values(skuMap)) e.byMonth[k] = 0;
+    }
+    for (const [it, info] of Object.entries(pr.skuUnits)) {
+      if (!skuMap[it]) skuMap[it] = { desc: info.desc, byMonth: {} };
+      skuMap[it].desc = info.desc;
+      for (const [k, u] of Object.entries(info.byMonth)) skuMap[it].byMonth[k] = u;
+    }
+    if (!fileNames.includes(pr.fileName)) fileNames.push(pr.fileName);
+  }
+  const skuMonths = [...new Set(Object.values(skuMap).flatMap((e) => Object.keys(e.byMonth)))].sort();
+  const skuRows = [];
+  for (const [it, e] of Object.entries(skuMap)) {
+    const full = {};
+    for (const k of skuMonths) full[k] = e.byMonth[k] || 0;
+    const total = Object.values(full).reduce((a, b) => a + b, 0);
+    if (total > 0) skuRows.push({ itemNo: it, desc: e.desc, totalUnits: total, byMonth: full });
+  }
+  skuRows.sort((a, b) => b.totalUnits - a.totalUnits);
+  const sortedByMonth = {};
+  for (const k of Object.keys(byMonth).sort()) sortedByMonth[k] = byMonth[k];
+  return {
+    bySku: { months: skuMonths, skus: skuRows },
+    byMonth: sortedByMonth,
+    basis: 'purchase_cost_usd',
+    fileNames,
+    note: 'ULTA 시스템이 자동 생성하는 비확정 발주 예측치(참고용). 각 월은 해당 월을 포함한 가장 최근 리포트 기준 (SKU별 예상 수량 x 평균 매입원가). Sell-in 목표/실적 비교에는 사용하지 않음.',
+  };
+}
+
 export function parseQtdYtd(buffer) {
   const wb = XLSX.read(buffer, { type: 'buffer' });
   const result = {};
@@ -465,7 +562,7 @@ export function buildFinancials(invWeeks) {
 // ---------- 스냅샷(data.json) 전체 재계산 ----------
 // existingSnapshot: 현재 data.json 파싱 결과 (target/marketing/kpiMonthly 등은 그대로 보존)
 // storeFiles / invFiles: [{ filename, buffer }] 배열 (raw-data 폴더 내 전체 원본 파일)
-export function recomputeSnapshot(existingSnapshot, storeFiles, invFiles, updatedByEmail) {
+export function recomputeSnapshot(existingSnapshot, storeFiles, invFiles, updatedByEmail, orderFiles = []) {
   const snapshot = JSON.parse(JSON.stringify(existingSnapshot));
 
   const storeWeeks = storeFiles.map((f) => parseStoreSales(f.buffer, f.filename));
@@ -538,6 +635,13 @@ export function recomputeSnapshot(existingSnapshot, storeFiles, invFiles, update
       qtd: qtdYtd.qtd, ytd: qtdYtd.ytd,
       asOfDate: latestWeekEnd,
       note: 'ULTA Sales_Inv_Perf 리포트의 Quarter to Date / Year to Date 시트에서 그대로 가져온 누적 실적입니다.',
+    };
+  }
+
+  if (orderFiles.length) {
+    snapshot.orderProjection = {
+      ...buildOrderProjection(snapshot.orderProjection, orderFiles),
+      uploadedAt: new Date().toISOString(),
     };
   }
 
