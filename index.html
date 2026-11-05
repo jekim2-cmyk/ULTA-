@@ -270,6 +270,15 @@
     <tbody><tr><td colspan="5" class="empty-hint">불러오는 중...</td></tr></tbody>
   </table>
 
+  <p style="font-size:11.5px; font-weight:700; color:var(--navy); margin:22px 0 6px;">제품별 ULTA 발주예측 수량 (월별, 합계순)</p>
+  <div class="desc" id="skuOrderProjDesc" style="margin-bottom:8px;">불러오는 중...</div>
+  <div style="overflow-x:auto;">
+    <table id="skuOrderProjTable">
+      <thead><tr><th style="position:sticky; left:0; background:var(--card);">제품</th></tr></thead>
+      <tbody><tr><td class="empty-hint">불러오는 중...</td></tr></tbody>
+    </table>
+  </div>
+
   <p style="font-size:11.5px; font-weight:700; color:var(--navy); margin:22px 0 6px;">제품별 월별 판매 수량 (상위 20개, 합계순)</p>
   <div class="desc" id="skuMonthlyUnitsDesc" style="margin-bottom:8px;">불러오는 중...</div>
   <div style="overflow-x:auto;">
@@ -363,6 +372,14 @@
       <input type="file" id="invPerfFile" accept=".xlsx">
       <button class="btn" id="invPerfUploadBtn" style="margin-left:8px;">업로드</button>
       <div class="status-msg" id="invPerfStatus"></div>
+    </div>
+
+    <div class="upload-card">
+      <h3>ULTA 발주예측 원본 업로드 (Order_Proj)</h3>
+      <div class="desc">파일명 형식: Order_Proj...-YYYY-MM-DD.xlsx · 업로드하면 월별 "ULTA 발주예측(참고)" 값이 가장 최근 리포트 기준으로 갱신됩니다.</div>
+      <input type="file" id="orderProjFile" accept=".xlsx">
+      <button class="btn" id="orderProjUploadBtn" style="margin-left:8px;">업로드</button>
+      <div class="status-msg" id="orderProjStatus"></div>
     </div>
 
     <div class="upload-card">
@@ -849,6 +866,34 @@ function renderSkuMonth(skuData, oosData, key){
   } else {
     document.querySelector('#oosTable tbody').innerHTML = oosRows.map(o=>`<tr><td>${o.desc}</td><td style="color:${oosColor(o.avgOosPct)}; font-weight:600;">${o.avgOosPct}%</td><td>${o.maxOosPct}%</td><td>${o.weeks}주</td></tr>`).join('');
   }
+}
+
+function renderSkuOrderProj(orderProjection){
+  const desc = document.getElementById('skuOrderProjDesc');
+  const table = document.getElementById('skuOrderProjTable');
+  const thead = table.querySelector('thead tr');
+  const tbody = table.querySelector('tbody');
+  const bySku = (orderProjection && orderProjection.bySku) || null;
+  const months = (bySku && bySku.months) || [];
+  const skus = (bySku && bySku.skus) || [];
+  if (!months.length || !skus.length){
+    desc.textContent = '제품별 발주예측 데이터가 없습니다 (데이터 관리에서 Order_Proj 파일 업로드 후 재계산 필요)';
+    tbody.innerHTML = '<tr><td class="empty-hint">데이터 없음</td></tr>';
+    return;
+  }
+  desc.textContent = `${monthKeyToKoreanLabel(months[0])} ~ ${monthKeyToKoreanLabel(months[months.length-1])} · ULTA 자동 발주 예측 수량(개, 비확정·참고용) · 각 월은 해당 월을 포함한 가장 최근 리포트 기준`;
+  thead.innerHTML = '<th style="position:sticky; left:0; background:var(--card);">제품</th>' +
+    months.map(mk=>`<th>${monthKeyToKoreanLabel(mk)}</th>`).join('') + '<th>합계</th>';
+  const totals = months.map(mk=> skus.reduce((s,r)=> s + (r.byMonth[mk]||0), 0));
+  const grand = totals.reduce((a,b)=>a+b,0);
+  tbody.innerHTML = skus.map(s=>
+    `<tr><td style="position:sticky; left:0; background:var(--card); font-weight:600;">${s.desc}</td>` +
+    months.map(mk=>`<td>${(s.byMonth[mk]||0).toLocaleString()}</td>`).join('') +
+    `<td style="font-weight:700;">${s.totalUnits.toLocaleString()}</td></tr>`
+  ).join('') +
+  `<tr style="background:#f4f6fa;"><td style="position:sticky; left:0; background:#f4f6fa; font-weight:700;">전체 합계</td>` +
+  totals.map(t=>`<td style="font-weight:700;">${t.toLocaleString()}</td>`).join('') +
+  `<td style="font-weight:700;">${grand.toLocaleString()}</td></tr>`;
 }
 
 function renderSkuMonthlyUnits(skuMonthlyUnits){
@@ -1519,6 +1564,9 @@ async function initDataPage(){
     document.getElementById('storeSalesUploadBtn').addEventListener('click', ()=>{
       uploadRawFile(document.getElementById('storeSalesFile'), 'store-sales', document.getElementById('storeSalesStatus'), document.getElementById('storeSalesUploadBtn'));
     });
+    document.getElementById('orderProjUploadBtn').addEventListener('click', ()=>{
+      uploadRawFile(document.getElementById('orderProjFile'), 'order-proj', document.getElementById('orderProjStatus'), document.getElementById('orderProjUploadBtn'));
+    });
     document.getElementById('recomputeBtn').addEventListener('click', ()=>{
       runRecompute(document.getElementById('recomputeStatus'), document.getElementById('recomputeBtn'));
     });
@@ -1575,6 +1623,7 @@ async function init(){
       initSkuOos(skuSales, skuOos);
       renderSkuWow(skuWeekly);
       renderSkuMonthlyUnits(skuMonthlyUnits);
+      renderSkuOrderProj(orderProjection);
       initFinancials(financials, qtdYtd);
       initInventoryTrend(inventoryWeekly);
       return;
@@ -1596,6 +1645,7 @@ async function init(){
     initSkuOos(skuSales, skuOos);
     renderSkuWow(skuWeekly);
     renderSkuMonthlyUnits(skuMonthlyUnits);
+      renderSkuOrderProj(orderProjection);
     initFinancials(financials, qtdYtd);
     initInventoryTrend(inventoryWeekly);
 
