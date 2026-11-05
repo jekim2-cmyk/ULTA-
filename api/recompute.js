@@ -16,6 +16,9 @@ function isStoreSalesFilename(name) {
 function isSalesInvPerfFilename(name) {
   return /^Sales_Inv_Perf.*-\d{4}-\d{2}-\d{2}\.xlsx$/i.test(name);
 }
+function isOrderProjFilename(name) {
+  return /^Order_Proj.*-\d{4}-\d{2}-\d{2}\.xlsx$/i.test(name);
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -47,6 +50,12 @@ export default async function handler(req, res) {
       const f = await getFile(`${RAW_DIR}/${e.name}`);
       if (f) invFiles.push({ filename: e.name, buffer: f.buffer });
     }
+    const orderEntries = entries.filter((e) => e.type === 'file' && isOrderProjFilename(e.name)).sort((a, b) => a.name.localeCompare(b.name));
+    const orderFiles = [];
+    for (const e of orderEntries) {
+      const f = await getFile(`${RAW_DIR}/${e.name}`);
+      if (f) orderFiles.push({ filename: e.name, buffer: f.buffer });
+    }
 
     // 2) 기존 data.json을 불러와 target/marketing/kpiMonthly 등은 보존한 채 재계산
     const existingDataFile = await getFile(DATA_PATH);
@@ -55,7 +64,7 @@ export default async function handler(req, res) {
       return;
     }
     const existingSnapshot = JSON.parse(existingDataFile.text);
-    const newSnapshot = recomputeSnapshot(existingSnapshot, storeFiles, invFiles, email);
+    const newSnapshot = recomputeSnapshot(existingSnapshot, storeFiles, invFiles, email, orderFiles);
 
     // 3) data.json 커밋
     await putFile(
